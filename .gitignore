@@ -1,0 +1,28 @@
+# Dependencies
+**/node_modules/
+
+# Build outputs
+out/
+build/
+*.obj
+*.tlog
+*.exe
+*.lib
+*.dll
+*.pdb
+*.ilk
+
+# Backend generated data
+backend/uploads/
+backend/results/
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.user
+
+# System
+.DS_Store
+Thumbs.db
+

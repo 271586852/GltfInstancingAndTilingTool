@@ -1,0 +1,42 @@
+# --- 输入/输出目录 ---
+# 输入目录：包含要处理的 GLB 文件。
+input_directory = D:\dissertationProject\Data\BIMTest\viewer
+
+# 输出目录：用于保存处理后的文件。
+output_directory = D:\dissertationProject\Data\BIMTest\instancing
+
+# --- 容差与匹配设置 ---
+# 几何公差：用于顶点位置比较。设置为 0.0 表示精确匹配。
+# 例如：0.01 表示 1 厘米的容差（如果单位是米）。
+tolerance = 0.05
+
+# 法线公差：用于法线向量比较。仅在 tolerance > 0 时生效。
+normal_tolerance = 0.0
+
+# 跳过属性哈希：在公差模式下，跳过对这些属性的数据哈希计算。
+# POSITION 属性在 tolerance > 0 时总是被跳过。
+# 可以是单个值或逗号分隔的列表，例如：TEXCOORD_0,NORMAL
+skip_attribute_data_hash = TEXCOORD_0
+
+# --- 实例化设置 ---
+# 实例数量限制：构成实例化组所需的最小实例数。
+# 默认为 2。
+instance_limit = 3
+
+# --- 输出文件结构 ---
+# 合并 GLB：是否将所有输出的 GLB 文件合并成一个实例化的和一个非实例化的文件。
+# 这个设置在 v2 版本中通常保持为 false。
+merge_all_glb = false
+
+# 分离 Tileset：为实例化和非实例化的模型分别生成独立的 tileset.json。
+# 如果为 false，则只生成一个合并的 tileset.json。
+separate_instanced = false
+
+# 网格分割：是否将每个网格导出为单独的 GLB 文件（在实例化处理后执行）。
+# 这通常用于调试或特殊工作流程。
+mesh_segmentation = false
+
+# --- CSV 数据处理 ---
+# CSV 目录：包含要处理的 CSV 文件的目录。
+# 该功能将针对 non_instanced_meshes.glb 运行。
+csv_directory = D:\dissertationProject\Data\BIMTest\BatchExport

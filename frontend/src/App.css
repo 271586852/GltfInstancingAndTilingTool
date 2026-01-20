@@ -1,0 +1,254 @@
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Prevent scrollbars on the body */
+}
+
+#root {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 350px;
+  background-color: #1e1e1e;
+  padding: 20px;
+  box-shadow: 2px 0 5px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  z-index: 10;
+  overflow-y: auto;
+}
+
+.main-content {
+  flex-grow: 1;
+  position: relative;
+}
+
+.cesium-container {
+  width: 100%;
+  height: 100%;
+}
+
+h1 {
+  font-size: 1.5em;
+  line-height: 1.1;
+  color: #646cff;
+  margin: 0 0 10px 0;
+  border-bottom: 1px solid #444;
+  padding-bottom: 10px;
+}
+
+.upload-section, .status-section {
+    background-color: #2a2a2a;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.file-input-wrapper {
+  margin-bottom: 15px;
+}
+
+input[type="file"] {
+  display: none;
+}
+
+.file-label {
+  background-color: #3e3e3e;
+  color: white;
+  padding: 10px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: block;
+  text-align: center;
+  transition: background-color 0.2s;
+}
+
+.file-label:hover {
+  background-color: #555;
+}
+
+.file-name {
+    margin-top: 10px;
+    font-style: italic;
+    color: #aaa;
+    word-wrap: break-word;
+}
+
+.process-button {
+  width: 100%;
+  padding: 12px;
+  font-size: 1em;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background-color: #646cff;
+  color: white;
+  cursor: pointer;
+  transition: border-color 0.25s, background-color 0.2s;
+}
+
+.process-button:hover {
+  background-color: #535bf2;
+}
+
+.process-button:disabled {
+  background-color: #333;
+  cursor: not-allowed;
+  color: #777;
+}
+
+.options-section {
+  margin-top: 20px;
+  border-top: 1px solid #444;
+  padding-top: 20px;
+}
+
+.options-section h3 {
+  margin: 0 0 15px 0;
+  color: #ccc;
+  font-size: 1.1em;
+}
+
+.option-item {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 15px;
+}
+
+.option-item label {
+  margin-bottom: 5px;
+  color: #aaa;
+  font-size: 0.9em;
+}
+
+.option-item input {
+  background-color: #3e3e3e;
+  border: 1px solid #555;
+  color: white;
+  padding: 8px 10px;
+  border-radius: 5px;
+  font-size: 1em;
+}
+
+.option-item.checkbox-item {
+    flex-direction: row;
+    align-items: center;
+}
+
+.option-item.checkbox-item input {
+    width: 18px;
+    height: 18px;
+    margin-right: 10px;
+    accent-color: #646cff;
+}
+
+.option-item.checkbox-item label {
+    margin: 0;
+    color: #ccc;
+    cursor: pointer;
+}
+
+.analysis-results {
+  margin-top: 15px;
+  background-color: #2a3d4f;
+  border-radius: 5px;
+  padding: 10px 15px;
+}
+
+.analysis-results h4 {
+  margin: 0 0 10px 0;
+  color: #87c5ff;
+  font-size: 1.1em;
+  border-bottom: 1px solid #4a5d6f;
+  padding-bottom: 5px;
+}
+
+.analysis-results ul {
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
+}
+
+.analysis-results li {
+  margin-bottom: 5px;
+  font-size: 0.9em;
+  color: #eee;
+}
+
+.analysis-results li strong {
+  color: #87c5ff;
+  text-transform: capitalize;
+}
+
+.download-button {
+  display: block;
+  width: calc(100% - 30px);
+  margin: 15px auto 5px auto;
+  padding: 10px;
+  background-color: #3e8e41;
+  color: white;
+  text-align: center;
+  text-decoration: none;
+  border-radius: 5px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.download-button:hover {
+  background-color: #4caf50;
+}
+
+.status-message {
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+}
+.status-message.info {
+    background-color: #2a3d4f;
+    color: #87c5ff
+}
+.status-message.error {
+    background-color: #4f2a2a;
+    color: #ff8787;
+    white-space: pre-wrap; /* Allows line breaks */
+    word-break: break-all;
+}
+.status-message.success {
+    background-color: #2a4f31;
+    color: #87ff9a
+}
+
+.loader {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #535bf2;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+  margin: 10px auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.cesium-widget-credits {
+    display: none !important; /* Hide Cesium credits for a cleaner look */
+}
