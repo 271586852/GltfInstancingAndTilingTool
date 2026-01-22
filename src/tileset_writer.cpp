@@ -296,8 +296,21 @@ namespace GltfInstancing {
     // 递归辅助函数
     Tile buildTileRecursively(const TilesetNode& node) {
         Tile tile;
-        auto boxArray = node.boundingVolume.toTilesetBoundingVolumeBox();
-        tile.boundingVolume.box = std::vector<double>(boxArray.begin(), boxArray.end());
+        std::vector<double> boundingBox;
+        if (node.boundingVolume.isValid()) {
+            double centerX = (node.boundingVolume.max.x + node.boundingVolume.min.x) / 2.0;
+            double centerY = (node.boundingVolume.max.y + node.boundingVolume.min.y) / 2.0;
+            double centerZ = (node.boundingVolume.max.z + node.boundingVolume.min.z) / 2.0;
+            double distanceX = node.boundingVolume.max.x - centerX;
+            double distanceY = node.boundingVolume.max.y - centerY;
+            double distanceZ = node.boundingVolume.max.z - centerZ;
+            boundingBox = { centerX, centerY, centerZ, distanceX, 0.0, 0.0, 0.0, distanceY, 0.0, 0.0, 0.0, distanceZ };
+            // 将包围盒从 glTF 的 Y-up 转为 Cesium 的 Z-up
+            changeGLBToCesiumAxis(boundingBox);
+        } else {
+            boundingBox = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+        }
+        tile.boundingVolume.box = std::move(boundingBox);
         tile.geometricError = node.geometricError;
         tile.refine = Tile::Refine::REPLACE;
 
