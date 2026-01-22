@@ -12,6 +12,9 @@ build/
 *.pdb
 *.ilk
 
+# Example files
+example/
+
 # Backend generated data
 backend/uploads/
 backend/results/

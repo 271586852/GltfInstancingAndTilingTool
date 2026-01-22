@@ -24,7 +24,9 @@ namespace GltfInstancing {
     struct InstancingDetectionResult {
         std::vector<InstancedMeshGroup> instancedGroups;
         std::vector<NonInstancedMeshInfo> nonInstancedMeshes;
-        // Potentially, a mapping from original (modelId, meshId) to new representative mesh or group
+        
+        // Generates a summary report string
+        std::string getReport() const;
     };
 
     class InstancingDetector {

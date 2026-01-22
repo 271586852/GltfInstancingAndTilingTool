@@ -276,6 +276,117 @@ bool loadCsvEntries(const std::filesystem::path& csvPath, std::vector<CsvEntry>&
     return true;
 }
 
+// Helper to count total nodes recursively
+int countTotalNodes(const CesiumGltf::Model& model, int32_t nodeIndex) {
+    if (nodeIndex < 0 || static_cast<size_t>(nodeIndex) >= model.nodes.size()) return 0;
+    int count = 1; // Count self
+    for (int32_t child : model.nodes[nodeIndex].children) {
+        count += countTotalNodes(model, child);
+    }
+    return count;
+}
+
+// Helper to write CSV analysis report
+void writeAnalysisCsv(const ToolConfiguration& config, 
+                     const std::vector<GltfInstancing::LoadedGltfModel>& loadedModels,
+                     const GltfInstancing::InstancingDetectionResult& result) {
+    
+    // 1. Calculate Initial Stats
+    size_t inputModels = loadedModels.size();
+    size_t initialNodes = 0;
+    size_t initialMeshes = 0;
+    size_t initialInstances = 0; // Items using EXT_mesh_gpu_instancing in input
+
+    for (const auto& loadedModel : loadedModels) {
+        initialMeshes += loadedModel.model.meshes.size();
+        if (!loadedModel.model.scenes.empty()) {
+            int sceneIdx = loadedModel.model.scene >= 0 ? loadedModel.model.scene : 0;
+            if (static_cast<size_t>(sceneIdx) < loadedModel.model.scenes.size()) {
+                for (int32_t root : loadedModel.model.scenes[sceneIdx].nodes) {
+                    initialNodes += countTotalNodes(loadedModel.model, root);
+                }
+            }
+        }
+        
+        // Count initial instances (EXT_mesh_gpu_instancing)
+        for (const auto& node : loadedModel.model.nodes) {
+             auto it = node.extensions.find("EXT_mesh_gpu_instancing");
+             if (it != node.extensions.end()) {
+                 try {
+                     // We need to peek into the extension to get count. 
+                     // Since we don't have easy access to the exact count without parsing attributes again,
+                     // we'll try to find a common accessor count.
+                     // Simpler approach: InstancingDetector does this. 
+                     // But here we just want a rough count.
+                     // Let's iterate attributes map in the extension JSON object if possible, or use Cesium's type.
+                     // The ExtensionExtMeshGpuInstancing is a struct.
+                     const auto* extData = std::any_cast<CesiumGltf::ExtensionExtMeshGpuInstancing>(&it->second);
+                     if (extData) {
+                         // Find any accessor and get its count
+                         for (auto const& [key, accessorId] : extData->attributes) {
+                             if (accessorId >= 0 && static_cast<size_t>(accessorId) < loadedModel.model.accessors.size()) {
+                                 initialInstances += loadedModel.model.accessors[accessorId].count;
+                                 break; // Found one valid accessor, that's the count
+                             }
+                         }
+                     }
+                 } catch (...) {}
+             }
+        }
+    }
+
+    // 2. Calculate Final Stats
+    size_t instancedGroups = result.instancedGroups.size();
+    size_t finalInstances = 0;
+    for(const auto& group : result.instancedGroups) {
+        finalInstances += group.instances.size();
+    }
+    size_t nonInstancedMeshes = result.nonInstancedMeshes.size();
+    
+    // Final Nodes: Each group is 1 node + Each non-instanced mesh is 1 node
+    size_t finalNodes = instancedGroups + nonInstancedMeshes;
+    
+    // Final Meshes: Each group has 1 representative mesh + Each non-instanced has 1 mesh
+    // (Assuming max reuse, but non-instanced might share meshes. However, "Final Meshes" usually refers to unique mesh data written)
+    // For this report, let's treat it as (Unique Rep Meshes + Unique Non-Instanced Meshes).
+    // But simplified: Instanced Groups Count + Non-Instanced Count.
+    size_t finalMeshes = instancedGroups + nonInstancedMeshes; 
+
+    // Total Displayed Meshes: All instances + All non-instanced items
+    size_t totalDisplayedMeshes = finalInstances + nonInstancedMeshes;
+
+    // 3. Ratios
+    double nodeReduction = (initialNodes > 0) ? (1.0 - (double)finalNodes / (double)initialNodes) * 100.0 : 0.0;
+    double initialInstancingRatio = (totalDisplayedMeshes > 0) ? ((double)initialInstances / (double)totalDisplayedMeshes) * 100.0 : 0.0;
+    double finalInstancingRatio = (totalDisplayedMeshes > 0) ? ((double)finalInstances / (double)totalDisplayedMeshes) * 100.0 : 0.0;
+    double instancingIncrease = finalInstancingRatio - initialInstancingRatio;
+
+    // 4. Write CSV
+    std::filesystem::path csvPath = std::filesystem::path(config.outputDirectory) / "instancing_analysis.csv";
+    std::ofstream csvFile(csvPath);
+    if (csvFile.is_open()) {
+        csvFile << "Input Models,Initial Nodes,Initial Meshes,Initial Instances,Instanced Groups,Final Instances,Non-instanced Meshes,Final Nodes,Final Meshes,Total Displayed Meshes,Node Reduction (%),Initial Instancing Ratio (%),Final Instancing Ratio (%),Instancing Increase (%)\n";
+        csvFile << inputModels << ","
+                << initialNodes << ","
+                << initialMeshes << ","
+                << initialInstances << ","
+                << instancedGroups << ","
+                << finalInstances << ","
+                << nonInstancedMeshes << ","
+                << finalNodes << ","
+                << finalMeshes << ","
+                << totalDisplayedMeshes << ","
+                << std::fixed << std::setprecision(2) << nodeReduction << ","
+                << initialInstancingRatio << ","
+                << finalInstancingRatio << ","
+                << instancingIncrease << "\n";
+        csvFile.close();
+        GltfInstancing::logInfo("Instancing analysis CSV written to: " + csvPath.string());
+    } else {
+        GltfInstancing::logError("Failed to write instancing analysis CSV to: " + csvPath.string());
+    }
+}
+
 // Main function to process GLB against CSV files, similar to the Python script
 void processCsvAgainstGlb(const ToolConfiguration& config) {
     if (!config.csvDirectorySet || config.csvDirectory.empty()) {
@@ -609,6 +720,87 @@ int main(int argc, char* argv[]) {
     GltfInstancing::GlbWriter glbWriter;
     GltfInstancing::TilesetWriter tilesetWriter;
 
+    // --- REPORT GENERATION (Restored - Text) ---
+    std::string reportContent = detectionResult.getReport();
+    std::filesystem::path reportPath = std::filesystem::path(config.outputDirectory) / "instancing_analysis.txt";
+    std::ofstream reportFile(reportPath);
+    if (reportFile.is_open()) {
+        reportFile << reportContent;
+        reportFile.close();
+        // GltfInstancing::logInfo("Instancing analysis report written to: " + reportPath.string());
+    } else {
+        GltfInstancing::logError("Failed to write instancing analysis report to: " + reportPath.string());
+    }
+
+    // --- STANDARD OUTPUT GENERATION (Always run) ---
+    // (Generate CSV Report first)
+    writeAnalysisCsv(config, loadedModels, detectionResult);
+    
+    std::filesystem::path instancedGlbFileNameBase = "instanced_meshes";
+    std::filesystem::path nonInstancedGlbFileNameBase = "non_instanced_meshes";
+    std::vector<std::filesystem::path> stage1_outputGlbs;
+
+    std::optional<std::pair<std::filesystem::path, GltfInstancing::BoundingBox>> instancedWriteResult;
+    std::optional<std::pair<std::filesystem::path, GltfInstancing::BoundingBox>> nonInstancedWriteResult;
+
+    if (config.mergeAllGlb) {
+        std::filesystem::path mergedInstancedGlbPath = std::filesystem::path(config.outputDirectory) / (instancedGlbFileNameBase.string() + ".glb");
+        instancedWriteResult = glbWriter.writeInstancedMeshesOnly(loadedModels, detectionResult, mergedInstancedGlbPath);
+        if (instancedWriteResult) stage1_outputGlbs.push_back(instancedWriteResult->first);
+
+        std::filesystem::path mergedNonInstancedGlbPath = std::filesystem::path(config.outputDirectory) / (nonInstancedGlbFileNameBase.string() + ".glb");
+        nonInstancedWriteResult = glbWriter.writeNonInstancedMeshesOnly(loadedModels, detectionResult, mergedNonInstancedGlbPath);
+        if (nonInstancedWriteResult) stage1_outputGlbs.push_back(nonInstancedWriteResult->first);
+    } else {
+        std::filesystem::path instancedGlbPath = std::filesystem::path(config.outputDirectory) / (instancedGlbFileNameBase.string() + ".glb");
+        instancedWriteResult = glbWriter.writeInstancedMeshesOnly(loadedModels, detectionResult, instancedGlbPath);
+        if (instancedWriteResult) stage1_outputGlbs.push_back(instancedWriteResult->first);
+    
+        std::filesystem::path nonInstancedGlbPath = std::filesystem::path(config.outputDirectory) / (nonInstancedGlbFileNameBase.string() + ".glb");
+        nonInstancedWriteResult = glbWriter.writeNonInstancedMeshesOnly(loadedModels, detectionResult, nonInstancedGlbPath);
+        if (nonInstancedWriteResult) stage1_outputGlbs.push_back(nonInstancedWriteResult->first);
+    }
+
+    if (instancedWriteResult && instancedWriteResult->second.isValid()) {
+        std::filesystem::path instancedTilesetPath = std::filesystem::path(config.outputDirectory) / "tileset_instanced.json";
+        std::vector<std::filesystem::path> instancedUris = { instancedWriteResult->first };
+        GltfInstancing::BoundingBox bbox = instancedWriteResult->second;
+        glm::dvec3 extents = bbox.max - bbox.min;
+        double diagonal = glm::length(extents);
+        double rootGeometricError = (diagonal > 0) ? (diagonal * 0.1) : 1.0;
+        if (rootGeometricError < 1.0) rootGeometricError = 1.0;
+        tilesetWriter.writeTileset(instancedUris, instancedTilesetPath, rootGeometricError);
+    }
+
+    if (nonInstancedWriteResult && nonInstancedWriteResult->second.isValid()) {
+        std::filesystem::path nonInstancedTilesetPath = std::filesystem::path(config.outputDirectory) / "tileset_non_instanced.json";
+        std::vector<std::filesystem::path> nonInstancedUris = { nonInstancedWriteResult->first };
+        GltfInstancing::BoundingBox bbox = nonInstancedWriteResult->second;
+        glm::dvec3 extents = bbox.max - bbox.min;
+        double diagonal = glm::length(extents);
+        double rootGeometricError = (diagonal > 0) ? (diagonal * 0.1) : 1.0;
+        if (rootGeometricError < 1.0) rootGeometricError = 1.0;
+        tilesetWriter.writeTileset(nonInstancedUris, nonInstancedTilesetPath, rootGeometricError);
+    }
+    
+    // Stage 2: Mesh Segmentation
+    if (config.meshSegmentation) {
+            std::filesystem::path segmentationOutputDir = std::filesystem::path(config.outputDirectory) / "segmented_glb_output";
+            std::filesystem::create_directories(segmentationOutputDir);
+            GltfInstancing::GlbReader stage2Reader; 
+            std::vector<GltfInstancing::LoadedGltfModel> modelsToSegment;
+            for (const auto& glbPath : stage1_outputGlbs) {
+                if (std::filesystem::exists(glbPath)) {
+                    std::set<std::filesystem::path> singleFileSet = { glbPath };
+                    auto loadedSingleModelVec = stage2Reader.loadGltfModels(singleFileSet);
+                    modelsToSegment.insert(modelsToSegment.end(), loadedSingleModelVec.begin(), loadedSingleModelVec.end());
+                }
+            }
+            if (!modelsToSegment.empty()) {
+                glbWriter.writeMeshesAsSeparateGlbs(modelsToSegment, segmentationOutputDir);
+            }
+    }
+
     // --- LOD Generation Logic ---
     if (config.enableLodGeneration) {
         GltfInstancing::logInfo("LOD Generation Enabled. Loading semantic data...");
@@ -684,75 +876,6 @@ int main(int argc, char* argv[]) {
             GltfInstancing::logError("LOD generation failed to produce any valid levels.");
         }
 
-    } else {
-        // Original non-LOD flow
-        // ... (Keep existing flow for non-LOD output) ...
-        // To be safe, I'm pasting the original logic here as fallback
-        
-        std::filesystem::path instancedGlbFileNameBase = "instanced_meshes";
-        std::filesystem::path nonInstancedGlbFileNameBase = "non_instanced_meshes";
-        std::vector<std::filesystem::path> stage1_outputGlbs;
-
-        std::optional<std::pair<std::filesystem::path, GltfInstancing::BoundingBox>> instancedWriteResult;
-        std::optional<std::pair<std::filesystem::path, GltfInstancing::BoundingBox>> nonInstancedWriteResult;
-
-        if (config.mergeAllGlb) {
-            std::filesystem::path mergedInstancedGlbPath = std::filesystem::path(config.outputDirectory) / (instancedGlbFileNameBase.string() + ".glb");
-            instancedWriteResult = glbWriter.writeInstancedMeshesOnly(loadedModels, detectionResult, mergedInstancedGlbPath);
-            if (instancedWriteResult) stage1_outputGlbs.push_back(instancedWriteResult->first);
-
-            std::filesystem::path mergedNonInstancedGlbPath = std::filesystem::path(config.outputDirectory) / (nonInstancedGlbFileNameBase.string() + ".glb");
-            nonInstancedWriteResult = glbWriter.writeNonInstancedMeshesOnly(loadedModels, detectionResult, mergedNonInstancedGlbPath);
-            if (nonInstancedWriteResult) stage1_outputGlbs.push_back(nonInstancedWriteResult->first);
-        } else {
-            std::filesystem::path instancedGlbPath = std::filesystem::path(config.outputDirectory) / (instancedGlbFileNameBase.string() + ".glb");
-            instancedWriteResult = glbWriter.writeInstancedMeshesOnly(loadedModels, detectionResult, instancedGlbPath);
-            if (instancedWriteResult) stage1_outputGlbs.push_back(instancedWriteResult->first);
-        
-            std::filesystem::path nonInstancedGlbPath = std::filesystem::path(config.outputDirectory) / (nonInstancedGlbFileNameBase.string() + ".glb");
-            nonInstancedWriteResult = glbWriter.writeNonInstancedMeshesOnly(loadedModels, detectionResult, nonInstancedGlbPath);
-            if (nonInstancedWriteResult) stage1_outputGlbs.push_back(nonInstancedWriteResult->first);
-        }
-
-        if (instancedWriteResult && instancedWriteResult->second.isValid()) {
-            std::filesystem::path instancedTilesetPath = std::filesystem::path(config.outputDirectory) / "tileset_instanced.json";
-            std::vector<std::filesystem::path> instancedUris = { instancedWriteResult->first };
-            GltfInstancing::BoundingBox bbox = instancedWriteResult->second;
-            glm::dvec3 extents = bbox.max - bbox.min;
-            double diagonal = glm::length(extents);
-            double rootGeometricError = (diagonal > 0) ? (diagonal * 0.1) : 1.0;
-            if (rootGeometricError < 1.0) rootGeometricError = 1.0;
-            tilesetWriter.writeTileset(instancedUris, instancedTilesetPath, rootGeometricError);
-        }
-
-        if (nonInstancedWriteResult && nonInstancedWriteResult->second.isValid()) {
-            std::filesystem::path nonInstancedTilesetPath = std::filesystem::path(config.outputDirectory) / "tileset_non_instanced.json";
-            std::vector<std::filesystem::path> nonInstancedUris = { nonInstancedWriteResult->first };
-            GltfInstancing::BoundingBox bbox = nonInstancedWriteResult->second;
-            glm::dvec3 extents = bbox.max - bbox.min;
-            double diagonal = glm::length(extents);
-            double rootGeometricError = (diagonal > 0) ? (diagonal * 0.1) : 1.0;
-            if (rootGeometricError < 1.0) rootGeometricError = 1.0;
-            tilesetWriter.writeTileset(nonInstancedUris, nonInstancedTilesetPath, rootGeometricError);
-        }
-        
-        // Stage 2: Mesh Segmentation (only if not LOD)
-        if (config.meshSegmentation) {
-             std::filesystem::path segmentationOutputDir = std::filesystem::path(config.outputDirectory) / "segmented_glb_output";
-             std::filesystem::create_directories(segmentationOutputDir);
-             GltfInstancing::GlbReader stage2Reader; 
-             std::vector<GltfInstancing::LoadedGltfModel> modelsToSegment;
-             for (const auto& glbPath : stage1_outputGlbs) {
-                 if (std::filesystem::exists(glbPath)) {
-                     std::set<std::filesystem::path> singleFileSet = { glbPath };
-                     auto loadedSingleModelVec = stage2Reader.loadGltfModels(singleFileSet);
-                     modelsToSegment.insert(modelsToSegment.end(), loadedSingleModelVec.begin(), loadedSingleModelVec.end());
-                 }
-             }
-             if (!modelsToSegment.empty()) {
-                 glbWriter.writeMeshesAsSeparateGlbs(modelsToSegment, segmentationOutputDir);
-             }
-        }
     }
 
     // Stage 3: CSV Processing (Always run if configured)

@@ -296,7 +296,8 @@ namespace GltfInstancing {
     // 递归辅助函数
     Tile buildTileRecursively(const TilesetNode& node) {
         Tile tile;
-        tile.boundingVolume.box = std::vector<double>(node.boundingVolume.toTilesetBoundingVolumeBox().begin(), node.boundingVolume.toTilesetBoundingVolumeBox().end());
+        auto boxArray = node.boundingVolume.toTilesetBoundingVolumeBox();
+        tile.boundingVolume.box = std::vector<double>(boxArray.begin(), boxArray.end());
         tile.geometricError = node.geometricError;
         tile.refine = Tile::Refine::REPLACE;
 
