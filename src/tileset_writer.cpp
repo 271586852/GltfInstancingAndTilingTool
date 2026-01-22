@@ -307,8 +307,24 @@ namespace GltfInstancing {
             tile.content = content;
         }
 
+        double maxChildError = 0.0;
         for (const auto& childNode : node.children) {
-            tile.children.push_back(buildTileRecursively(childNode));
+            Tile child = buildTileRecursively(childNode);
+            if (child.geometricError > maxChildError) {
+                maxChildError = child.geometricError;
+            }
+            tile.children.push_back(std::move(child));
+        }
+
+        // 确保父级几何误差严格大于子级（单调性修正）
+        if (!tile.children.empty() && tile.geometricError <= maxChildError) {
+            const double minDelta = 1.0;
+            const double relativeBump = 0.05;
+            double bumped = maxChildError * (1.0 + relativeBump);
+            if (bumped < maxChildError + minDelta) {
+                bumped = maxChildError + minDelta;
+            }
+            tile.geometricError = bumped;
         }
 
         return tile;
@@ -323,10 +339,15 @@ namespace GltfInstancing {
         tileset.geometricError = 10000; // 根节点通常误差很大
 
         // 设置默认变换（可根据需要调整）
+        // 修正：从 GLB (Y-up) 到 3D Tiles (Z-up) 的旋转
         tileset.root.transform = { 
+            // Col 0
             -0.9023136427, 0.4310860309, 0.0, 0.0, 
-            -0.2117562093, -0.4431713488, 0.8716388481, 0.0, 
-             0.3731804153, 0.7899661139, 0.4899996041, 0.0,
+            // Col 1 (was Col 2)
+             0.3731804153, 0.7899661139, 0.4899996041, 0.0, 
+            // Col 2 (was -Col 1)
+             0.2117562093, 0.4431713488, -0.8716388481, 0.0, 
+            // Col 3
             -2418525.0442296155, 5400267.3619212005, 2429440.0912170662, 1.0 
         };
 
