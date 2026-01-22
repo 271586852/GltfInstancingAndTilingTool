@@ -6,6 +6,7 @@
 #include <string>
 #include <optional>
 #include <iostream>
+#include <vector>
 
 // Cesium Native 3D Tiles classes
 #include <Cesium3DTiles/Tileset.h>
@@ -41,6 +42,17 @@ namespace GltfInstancing {
         int byteLength;
     };
 
+    // 树状结构的 Tileset 节点定义
+    struct TilesetNode {
+        BoundingBox boundingVolume;
+        double geometricError;
+        std::string contentUri; // 如果为空，表示中间节点
+        std::vector<TilesetNode> children;
+        
+        // 构造函数方便使用
+        TilesetNode() : geometricError(0.0) {}
+    };
+
     class TilesetWriter {
     public:
         TilesetWriter();
@@ -54,6 +66,12 @@ namespace GltfInstancing {
             const std::vector<std::filesystem::path>& uris,
             const std::filesystem::path& tilesetOutputPath,
             double geometricError = 500.0 // Default geometric error
+        );
+
+        // 新增：支持层级结构的 Tileset 写入
+        bool writeHierarchicalTileset(
+            const TilesetNode& rootNode,
+            const std::filesystem::path& tilesetOutputPath
         );
 
     private:

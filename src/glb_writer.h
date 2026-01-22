@@ -4,6 +4,7 @@
 #include "utilities.h"
 #include "instancing_detector.h" // For InstancingDetectionResult and related structs
 #include "glb_reader.h"         // For LoadedGltfModel (to access original model data)
+#include "lod_manager.h"        // For LODLevelResult
 
 #include <vector>
 #include <string>
@@ -68,6 +69,13 @@ namespace GltfInstancing {
             const std::vector<LoadedGltfModel>& originalModels,
             const InstancingDetectionResult& detectionResult,
             const std::filesystem::path& outputPath);
+
+        // 新增：输出 LOD 层级 GLB
+        std::optional<std::pair<std::filesystem::path, BoundingBox>> writeLODGlb(
+            const std::vector<LoadedGltfModel>& originalModels,
+            const LODLevelResult& lodData,
+            const std::filesystem::path& outputPath
+        );
 
         // New method for mesh segmentation
         bool writeMeshesAsSeparateGlbs(
@@ -134,6 +142,10 @@ namespace GltfInstancing {
         const CesiumGltf::Model* getOriginalModelById(
             const std::vector<LoadedGltfModel>& originalModels,
             int modelId) const;
+
+        // 新增：创建标准 Cube Mesh (用于 LOD1)
+        // 返回新 Mesh 在 _outputGltf 中的索引
+        int32_t createCubeMesh();
     };
 
 } // namespace GltfInstancing

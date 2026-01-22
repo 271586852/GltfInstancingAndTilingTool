@@ -47,6 +47,8 @@ set(PROJECT_SOURCES
     src/glb_reader.cpp
     src/instancing_detector.cpp
     src/glb_writer.cpp
+    src/semantic_parser.cpp
+    src/lod_manager.cpp
     src/tileset_writer.cpp
     src/utilities.cpp
     
