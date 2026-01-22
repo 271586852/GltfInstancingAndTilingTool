@@ -387,6 +387,85 @@ void writeAnalysisCsv(const ToolConfiguration& config,
     }
 }
 
+struct LodStats {
+    int level;
+    double fileSizeMB;
+    int uniqueMeshes;
+    size_t totalInstances;
+    size_t totalVertices;
+};
+
+// Helper to write LOD analysis report
+void writeLodAnalysisCsv(const ToolConfiguration& config, 
+                        const std::vector<LodStats>& stats,
+                        double originalFileSizeMB,
+                        size_t originalVertices,
+                        size_t originalInstances) {
+    std::filesystem::path csvPath = std::filesystem::path(config.outputDirectory) / "lod_output" / "lod_analysis.csv";
+    std::ofstream csvFile(csvPath);
+    
+    if (csvFile.is_open()) {
+        csvFile << "Metric,Original (Input),Instanced (LOD5),LOD4 (Variant),LOD3 (Class),LOD2 (Abstract),LOD1 (Proxy)\n";
+        
+        // File Size
+        csvFile << "File Size (MB)," << std::fixed << std::setprecision(2) << originalFileSizeMB;
+        // Map stats to levels (assuming LOD5 is first in stats vector if sorted, or find by level)
+        // We expect stats to contain LOD5, LOD4... LOD1
+        // Let's create a map for easy lookup
+        std::map<int, LodStats> statsMap;
+        for (const auto& s : stats) statsMap[s.level] = s;
+
+        for (int l = 5; l >= 1; --l) {
+            if (statsMap.count(l)) csvFile << "," << statsMap[l].fileSizeMB;
+            else csvFile << ",-";
+        }
+        csvFile << "\n";
+
+        // Unique Meshes
+        csvFile << "Unique Meshes,-"; // Original unique meshes is hard to count exactly without processing, maybe N/A or from detection
+        for (int l = 5; l >= 1; --l) {
+            if (statsMap.count(l)) csvFile << "," << statsMap[l].uniqueMeshes;
+            else csvFile << ",-";
+        }
+        csvFile << "\n";
+
+        // Total Instances
+        csvFile << "Total Instances," << originalInstances;
+        for (int l = 5; l >= 1; --l) {
+            if (statsMap.count(l)) csvFile << "," << statsMap[l].totalInstances;
+            else csvFile << ",-";
+        }
+        csvFile << "\n";
+
+        // Vertices (Loaded/Displayed)
+        // Note: For Instanced, this is usually (Unique Mesh Verts). Total scene verts would be (Unique * Instances) if flattened.
+        // Let's report Unique Mesh Vertices (Loaded GPU Memory metric)
+        csvFile << "Vertices (Loaded)," << originalVertices;
+        for (int l = 5; l >= 1; --l) {
+            if (statsMap.count(l)) csvFile << "," << statsMap[l].totalVertices;
+            else csvFile << ",-";
+        }
+        csvFile << "\n";
+
+        // Reduction Rate (File Size vs Original)
+        csvFile << "Reduction Rate (%),-";
+        for (int l = 5; l >= 1; --l) {
+            if (statsMap.count(l) && originalFileSizeMB > 0) {
+                double rate = (1.0 - statsMap[l].fileSizeMB / originalFileSizeMB) * 100.0;
+                csvFile << "," << rate << "%";
+            } else {
+                csvFile << ",-";
+            }
+        }
+        csvFile << "\n";
+
+        csvFile.close();
+        GltfInstancing::logInfo("LOD analysis CSV written to: " + csvPath.string());
+    } else {
+        GltfInstancing::logError("Failed to write LOD analysis CSV to: " + csvPath.string());
+    }
+}
+
 // Main function to process GLB against CSV files, similar to the Python script
 void processCsvAgainstGlb(const ToolConfiguration& config) {
     if (!config.csvDirectorySet || config.csvDirectory.empty()) {
@@ -829,6 +908,7 @@ int main(int argc, char* argv[]) {
         // Key: Level, Value: List of TilesetNodes (one for each GLB at this level, though usually one combined GLB per level)
         // Here we assume one GLB per LOD level for simplicity
         std::vector<GltfInstancing::TilesetNode> levelNodes(config.lodLevelCount + 1); // Index 1-5
+        std::vector<LodStats> lodStatistics;
 
         for (auto const& [level, result] : lodResults) {
             std::string filename = "LOD" + std::to_string(level) + ".glb";
@@ -841,8 +921,58 @@ int main(int argc, char* argv[]) {
                 node.boundingVolume = writeRes->second;
                 node.geometricError = result.geometricError;
                 levelNodes[level] = node;
+
+                // Collect Stats
+                LodStats stats;
+                stats.level = level;
+                try {
+                    stats.fileSizeMB = (double)std::filesystem::file_size(outputPath) / (1024.0 * 1024.0);
+                } catch (...) { stats.fileSizeMB = 0.0; }
+                
+                stats.uniqueMeshes = 0;
+                stats.totalVertices = 0;
+                stats.totalInstances = 0;
+                
+                // Calculate from result.nodes (ExtendedMeshInfo)
+                // Note: result.nodes contains the *representatives*.
+                stats.uniqueMeshes = result.nodes.size();
+                for (const auto& meshInfo : result.nodes) {
+                    stats.totalVertices += meshInfo.vertexCount;
+                    stats.totalInstances += meshInfo.instances.size();
+                }
+                lodStatistics.push_back(stats);
             }
         }
+
+        // Calculate Originals for Comparison
+        double originalFileSizeMB = 0.0;
+        size_t originalVertices = 0;
+        size_t originalInstancesTotal = 0; // Total instances in original scene (flattened)
+        for (const auto& p : initialGlbFilePaths) {
+             try { originalFileSizeMB += (double)std::filesystem::file_size(p) / (1024.0 * 1024.0); } catch(...) {}
+        }
+        // Estimate original unique vertices (loadedModels)
+        for (const auto& lm : loadedModels) {
+            for (const auto& mesh : lm.model.meshes) {
+                for (const auto& prim : mesh.primitives) {
+                     auto it = prim.attributes.find("POSITION");
+                     if (it != prim.attributes.end()) {
+                         int accId = it->second;
+                         if (accId >= 0 && accId < lm.model.accessors.size()) {
+                             originalVertices += lm.model.accessors[accId].count;
+                         }
+                     }
+                }
+            }
+            // Estimate original instances (roughly total nodes if no instancing, or sum of instance counts)
+            // A better metric for "Original Instances" in this table context might be "Total Objects"
+            // We can sum up instances from LOD5 result as the baseline "Total Objects" count.
+            if (!lodResults.empty() && lodResults.count(5)) {
+                 for (const auto& m : lodResults.at(5).nodes) originalInstancesTotal += m.instances.size();
+            }
+        }
+
+        writeLodAnalysisCsv(config, lodStatistics, originalFileSizeMB, originalVertices, originalInstancesTotal);
 
         // Build Tree (LOD1 -> LOD2 -> ... -> LOD5)
         // This is a simplified chain for now. 
