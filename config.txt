@@ -40,3 +40,20 @@ mesh_segmentation = false
 # CSV 目录：包含要处理的 CSV 文件的目录。
 # 该功能将针对 non_instanced_meshes.glb 运行。
 csv_directory = D:\dissertationProject\Data\BIMTest\BatchExport
+
+# --- LOD 设置 ---
+# 是否启用 LOD 生成。
+enable_lod_generation = true
+# LOD 层级数量 (1-5)。
+lod_level_count = 5
+# 目标屏幕误差 (SSE)。
+target_screen_sse = 16.0
+# LOD4: 尺寸容差 (体积差异比例)，例如 0.05 表示 5%。
+lod4_size_tolerance = 0.05
+# LOD3: 长宽比容差，例如 0.20 表示 20%。
+lod3_aspect_ratio_tolerance = 0.20
+# 是否启用语义/几何检查。
+enable_semantic_check = true
+enable_geometric_check = true
+# 语义数据路径 (.RISCRVT)
+semantic_data_path =

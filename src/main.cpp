@@ -38,6 +38,8 @@ struct ToolConfiguration {
     double targetScreenSSE = 16.0;
     bool enableSemanticCheck = true;
     bool enableGeometricCheck = true;
+    double lod4SizeTolerance = 0.05;
+    double lod3AspectRatioTolerance = 0.20;
     std::string semanticDataPath;
 
     // Flags to track if a parameter was set
@@ -178,6 +180,10 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 try { config.lodLevelCount = std::stoi(value); } catch(...) {}
             } else if (key == "target_screen_sse") {
                 try { config.targetScreenSSE = std::stod(value); } catch(...) {}
+            } else if (key == "lod4_size_tolerance") {
+                try { config.lod4SizeTolerance = std::stod(value); } catch(...) {}
+            } else if (key == "lod3_aspect_ratio_tolerance") {
+                try { config.lod3AspectRatioTolerance = std::stod(value); } catch(...) {}
             } else if (key == "enable_semantic_check") {
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") config.enableSemanticCheck = true;
@@ -897,6 +903,8 @@ int main(int argc, char* argv[]) {
         lodConfig.targetScreenSSE = config.targetScreenSSE;
         lodConfig.enableSemanticCheck = config.enableSemanticCheck;
         lodConfig.enableGeometricCheck = config.enableGeometricCheck;
+        lodConfig.lod4_sizeTolerance = config.lod4SizeTolerance;
+        lodConfig.lod3_aspectRatioTolerance = config.lod3AspectRatioTolerance;
 
         GltfInstancing::LODManager lodManager(lodConfig);
         auto lodResults = lodManager.generateLODs(detectionResult, loadedModels, semanticParser);
