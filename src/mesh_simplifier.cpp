@@ -12,6 +12,14 @@
 
 namespace NonInstancingLOD {
 
+    struct LodStats {
+        int level;
+        std::string filename;
+        size_t triangleCount;
+        size_t originalTriangleCount;
+        double fileSizeMB;
+    };
+
     void MeshSimplifier::generateNonInstancingLodChain(
         const std::filesystem::path& inputPath,
         const std::filesystem::path& outputDir,
@@ -25,6 +33,8 @@ namespace NonInstancingLOD {
         }
 
         std::filesystem::create_directories(outputDir);
+
+        std::vector<LodStats> allStats;
 
         // Load original model
         std::vector<std::byte> data;
@@ -60,6 +70,27 @@ namespace NonInstancingLOD {
         try {
             std::filesystem::copy_file(inputPath, lod0Path, std::filesystem::copy_options::overwrite_existing);
             lodFilenames.push_back(lod0Name);
+
+            // Calculate LOD0 stats
+            LodStats lod0Stats;
+            lod0Stats.level = 0;
+            lod0Stats.filename = lod0Name;
+            try {
+                lod0Stats.fileSizeMB = (double)std::filesystem::file_size(lod0Path) / (1024.0 * 1024.0);
+            } catch (...) { lod0Stats.fileSizeMB = 0.0; }
+            
+            lod0Stats.triangleCount = 0;
+            for (const auto& mesh : currentModel.meshes) {
+                for (const auto& prim : mesh.primitives) {
+                    if (prim.indices >= 0) {
+                        const auto& acc = currentModel.accessors[prim.indices];
+                        lod0Stats.triangleCount += acc.count / 3;
+                    }
+                }
+            }
+            lod0Stats.originalTriangleCount = lod0Stats.triangleCount;
+            allStats.push_back(lod0Stats);
+
         } catch (const std::exception& e) {
             GltfInstancing::logError("MeshSimplifier: Failed to copy LOD0: " + std::string(e.what()));
             return;
@@ -101,10 +132,53 @@ namespace NonInstancingLOD {
             outFile.close();
             
             lodFilenames.push_back(lodName);
+
+            // Calculate LOD stats
+            LodStats stats;
+            stats.level = i;
+            stats.filename = lodName;
+            try {
+                stats.fileSizeMB = (double)std::filesystem::file_size(lodPath) / (1024.0 * 1024.0);
+            } catch (...) { stats.fileSizeMB = 0.0; }
+            
+            stats.triangleCount = 0;
+            for (const auto& mesh : simplified.meshes) {
+                for (const auto& prim : mesh.primitives) {
+                    if (prim.indices >= 0) {
+                        const auto& acc = simplified.accessors[prim.indices];
+                        stats.triangleCount += acc.count / 3;
+                    }
+                }
+            }
+            stats.originalTriangleCount = allStats[0].triangleCount;
+            allStats.push_back(stats);
             
             // For the next level, we base it off the ORIGINAL model but with a smaller ratio
             // This avoids accumulating errors from repeated simplification of simplified meshes
             currentRatio *= ratio; 
+        }
+
+        // Write CSV Report
+        std::filesystem::path reportPath = outputDir / "non_instanced_lod_report.csv";
+        std::ofstream reportFile(reportPath);
+        if (reportFile.is_open()) {
+            reportFile << "Level,Filename,File Size (MB),Triangle Count,Original Triangles,Reduction Ratio (Triangles),Reduction Ratio (File Size)\n";
+            for (const auto& s : allStats) {
+                double triRatio = (s.originalTriangleCount > 0) ? (1.0 - (double)s.triangleCount / s.originalTriangleCount) * 100.0 : 0.0;
+                double sizeRatio = (allStats[0].fileSizeMB > 0) ? (1.0 - s.fileSizeMB / allStats[0].fileSizeMB) * 100.0 : 0.0;
+                
+                reportFile << "LOD" << s.level << ","
+                           << s.filename << ","
+                           << std::fixed << std::setprecision(2) << s.fileSizeMB << ","
+                           << s.triangleCount << ","
+                           << s.originalTriangleCount << ","
+                           << triRatio << "%,"
+                           << sizeRatio << "%\n";
+            }
+            reportFile.close();
+            GltfInstancing::logInfo("Non-Instanced LOD report written to: " + reportPath.string());
+        } else {
+             GltfInstancing::logError("Failed to write non-instanced LOD report to: " + reportPath.string());
         }
 
         // Generate Tileset
@@ -237,7 +311,11 @@ namespace NonInstancingLOD {
                 // meshopt takes stride, so we can pass directly if float
                 
                 size_t targetIndexCount = static_cast<size_t>(indices.size() * targetRatio);
-                float targetError = 1e-2f;
+#include <cfloat> // for FLT_MAX
+
+// ...
+
+                float targetError = 1.0f; // Allow larger error to enforce simplification ratio
 
                 std::vector<unsigned int> newIndices(indices.size());
                 
@@ -253,6 +331,8 @@ namespace NonInstancingLOD {
                     0,
                     nullptr
                 );
+
+                GltfInstancing::logInfo("Simplified mesh primitive: " + std::to_string(indices.size()/3) + " -> " + std::to_string(simplifiedCount/3) + " triangles (Target: " + std::to_string(targetIndexCount/3) + ")");
 
                 // Resize and write to buffer
                 newIndices.resize(simplifiedCount);
