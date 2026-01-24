@@ -5,6 +5,7 @@
 #include "utilities.h" // For logging
 #include "semantic_parser.h" // 新增
 #include "lod_manager.h"     // 新增
+#include "mesh_simplifier.h" // 新增
 
 #include <iostream>
 #include <filesystem>
@@ -41,6 +42,11 @@ struct ToolConfiguration {
     double lod4SizeTolerance = 0.05;
     double lod3AspectRatioTolerance = 0.20;
     std::string semanticDataPath;
+
+    // --- Non-Instanced LOD Configuration ---
+    bool enableNonInstancedLodGeneration = false;
+    int nonInstancedLodLevelCount = 3;
+    double nonInstancedLodRatio = 0.5;
 
     // Flags to track if a parameter was set
     bool inputDirectorySet = false;
@@ -194,6 +200,16 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 else config.enableGeometricCheck = false;
             } else if (key == "semantic_data_path") {
                 config.semanticDataPath = value;
+            }
+            // --- Non-Instanced LOD Config Parsing ---
+            else if (key == "enable_non_instanced_lod_generation") {
+                std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+                if (value == "true" || value == "1" || value == "yes") config.enableNonInstancedLodGeneration = true;
+                else config.enableNonInstancedLodGeneration = false;
+            } else if (key == "non_instanced_lod_level_count") {
+                try { config.nonInstancedLodLevelCount = std::stoi(value); } catch(...) {}
+            } else if (key == "non_instanced_lod_ratio") {
+                try { config.nonInstancedLodRatio = std::stod(value); } catch(...) {}
             }
             else {
                 GltfInstancing::logWarning("Unknown configuration key in config file (line " + std::to_string(lineNumber) + "): " + key);
@@ -866,6 +882,19 @@ int main(int argc, char* argv[]) {
         double rootGeometricError = (diagonal > 0) ? (diagonal * 0.1) : 1.0;
         if (rootGeometricError < 1.0) rootGeometricError = 1.0;
         tilesetWriter.writeTileset(nonInstancedUris, nonInstancedTilesetPath, rootGeometricError);
+    }
+
+    // --- Non-Instanced LOD Generation ---
+    if (config.enableNonInstancedLodGeneration && nonInstancedWriteResult) {
+         GltfInstancing::logInfo("Generating LODs for non-instanced meshes...");
+         std::filesystem::path lodOutputDir = std::filesystem::path(config.outputDirectory) / "non_instanced_lods";
+         NonInstancingLOD::MeshSimplifier::generateNonInstancingLodChain(
+             nonInstancedWriteResult->first,
+             lodOutputDir,
+             config.nonInstancedLodLevelCount,
+             (float)config.nonInstancedLodRatio,
+             "tileset.json"
+         );
     }
     
     // Stage 2: Mesh Segmentation

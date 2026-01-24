@@ -14,6 +14,9 @@ build/
 
 # Example files
 example/
+example/output/lod_output/
+
+extern/
 
 # Backend generated data
 backend/uploads/
@@ -25,7 +28,13 @@ backend/results/
 *.suo
 *.user
 
+src_execution_flow.md
+
 # System
 .DS_Store
 Thumbs.db
 
+example/output/lod_output/LOD1.glb
+example/output/lod_output/LOD2.glb
+example/output/lod_output/LOD1.glb
+example/output/lod_output/LOD3.glb

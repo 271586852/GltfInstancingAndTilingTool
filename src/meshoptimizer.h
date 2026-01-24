@@ -1,0 +1,31 @@
+#ifndef MESHOPTIMIZER_H
+#define MESHOPTIMIZER_H
+
+#include <stddef.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * Reduces the number of triangles in the mesh, attempting to preserve mesh appearance.
+ * The algorithm tries to preserve mesh topology and can stop short of the target reduction ratio.
+ *
+ * destination must contain enough space for the resulting index buffer (index_count elements)
+ * indices must contain index data that is the result of meshopt_generateVertexRemap
+ * vertex_positions should have float3 position in the first 3 floats of each vertex
+ *
+ * options: 0 or meshopt_SimplifyLockBorder
+ */
+size_t meshopt_simplify(unsigned int* destination, const unsigned int* indices, size_t index_count, const float* vertex_positions, size_t vertex_count, size_t vertex_positions_stride, size_t target_index_count, float target_error, unsigned int options, float* result_error);
+
+enum {
+    meshopt_SimplifyLockBorder = 1 << 0,
+};
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+

@@ -51,6 +51,7 @@ set(PROJECT_SOURCES
     src/lod_manager.cpp
     src/tileset_writer.cpp
     src/utilities.cpp
+    src/mesh_simplifier.cpp
     
     #src/utils.cpp
     #src/tileset_generator.cpp
