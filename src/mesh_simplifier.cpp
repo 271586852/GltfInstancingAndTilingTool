@@ -9,6 +9,7 @@
 #include <iostream>
 #include <fstream>
 #include <glm/vec3.hpp>
+#include <cfloat>
 
 namespace NonInstancingLOD {
 
@@ -25,6 +26,7 @@ namespace NonInstancingLOD {
         const std::filesystem::path& outputDir,
         int levels,
         float ratio,
+        size_t minSimplifyIndexCount,
         const std::string& tilesetName
     ) {
         if (!std::filesystem::exists(inputPath)) {
@@ -101,7 +103,7 @@ namespace NonInstancingLOD {
         for (int i = 1; i <= levels; ++i) {
             GltfInstancing::logInfo("Generating Non-Instanced LOD " + std::to_string(i) + " (Target Ratio: " + std::to_string(currentRatio) + ")");
             
-            CesiumGltf::Model simplified = simplifyModel(currentModel, currentRatio);
+            CesiumGltf::Model simplified = simplifyModel(currentModel, currentRatio, minSimplifyIndexCount);
             
             std::string lodName = "non_instanced_LOD" + std::to_string(i) + ".glb";
             std::filesystem::path lodPath = outputDir / lodName;
@@ -153,8 +155,6 @@ namespace NonInstancingLOD {
             stats.originalTriangleCount = allStats[0].triangleCount;
             allStats.push_back(stats);
             
-            // For the next level, we base it off the ORIGINAL model but with a smaller ratio
-            // This avoids accumulating errors from repeated simplification of simplified meshes
             currentRatio *= ratio; 
         }
 
@@ -182,42 +182,22 @@ namespace NonInstancingLOD {
         }
 
         // Generate Tileset
-        // Construct a simple refinement chain: LOD N -> LOD N-1 -> ... -> LOD 0
-        // Or actually: Root (LOD N, Low Detail) -> Child (LOD N-1) -> ... -> Leaf (LOD 0, High Detail)
-        // Usually tileset traversal starts with low detail (root) and refines to high detail.
-        
-        // Assuming:
-        // LOD N (Coarsest) -> SSE 100
-        // LOD N-1          -> SSE 50
-        // ...
-        // LOD 0 (Finest)   -> SSE 0
-        
         if (lodFilenames.empty()) return;
 
         GltfInstancing::TilesetNode rootNode;
         GltfInstancing::TilesetNode* current = &rootNode;
         
-        // Reverse iterate: Coarsest (Last generated) to Finest (First generated)
         for (int i = lodFilenames.size() - 1; i >= 0; --i) {
             GltfInstancing::TilesetNode node;
             node.contentUri = lodFilenames[i];
             
-            // Geometric error heuristic
-            // LOD0 -> 0 (or very small)
-            // LOD1 -> Higher
-            // Formula: 2^(i) * base_error?
             double error = (i == 0) ? 0.0 : 16.0 * std::pow(2.0, i - 1); 
-            if (i == lodFilenames.size() - 1) error = 1000.0; // Root is very tolerant
+            if (i == lodFilenames.size() - 1) error = 1000.0;
 
             node.geometricError = error;
-            node.boundingVolume = { glm::dvec3(-10000), glm::dvec3(10000) }; // Bounding box needs to be calculated!
-            // TODO: Calculate actual bounding box of the model.
-            // For now, we can try to extract it from the model if available, or just set a large one if we don't check.
-            // Actually, we should calculate it. Let's assume the calling code or simplifyModel preserves it.
-            // But we need it for the tileset node.
+            node.boundingVolume = { glm::dvec3(-10000), glm::dvec3(10000) }; 
             
             if (i == lodFilenames.size() - 1) {
-                // This is the root of our chain
                 rootNode = node;
                 current = &rootNode;
             } else {
@@ -226,154 +206,370 @@ namespace NonInstancingLOD {
             }
         }
 
-        // Fix root geometric error
-        // The root node's GE defines when its CHILDREN are loaded.
-        // So Root(LOD_Coarse) has GE=X. When screen_error > X, we just see Root.
-        // When screen_error <= X, we load Children(LOD_Finer).
-        
-        // Let's refine the chain logic:
-        // Node (LOD_Last, GE=Large)
-        //   -> Child (LOD_Last-1, GE=Medium)
-        //      -> Child ...
-        //         -> Child (LOD_0, GE=0)
-        
-        // We need bounding box. 
-        // We can get it from the original model accessors.
-        // Let's iterate accessors of LOD0 to find min/max.
-        GltfInstancing::BoundingBox bbox;
-        // ... implementation of bbox extraction ...
-        // For simplicity, let's just make a huge box or re-read LOD0.
-        // Better: simplifyModel returns model, we can verify.
-        
-        // Write tileset
         std::filesystem::path tilesetPath = outputDir / tilesetName;
         GltfInstancing::TilesetWriter tilesetWriter;
-        // Note: TilesetWriter::writeHierarchicalTileset might need a valid bbox.
-        // Let's add a helper to get BBox from CesiumGltf::Model.
         
         tilesetWriter.writeHierarchicalTileset(rootNode, tilesetPath);
         GltfInstancing::logInfo("Non-Instanced LOD chain generated at: " + outputDir.string());
     }
 
-    CesiumGltf::Model MeshSimplifier::simplifyModel(const CesiumGltf::Model& source, float targetRatio) {
-        CesiumGltf::Model result = source; // Deep copy
+    CesiumGltf::Model MeshSimplifier::simplifyModel(
+        const CesiumGltf::Model& source,
+        float targetRatio,
+        size_t minSimplifyIndexCount
+    ) {
+        CesiumGltf::Model result = source;
         
-        // We will append new buffer data to buffer 0 (GLB expects a single buffer)
-        if (result.buffers.empty()) {
-            result.buffers.emplace_back();
-        }
-        size_t targetBufferIndex = 0;
-        CesiumGltf::Buffer& targetBuffer = result.buffers[targetBufferIndex];
+        // Output buffers: single buffer for GLB
+        result.buffers.clear();
+        result.buffers.resize(1); // Single buffer
+        result.bufferViews.clear();
+        result.accessors.clear();
 
-        for (auto& mesh : result.meshes) {
-            for (auto& primitive : mesh.primitives) {
-                // Check if indexed
-                if (primitive.indices < 0) continue; // Skip non-indexed for now
+        std::vector<CesiumGltf::Mesh> newMeshes;
+        newMeshes.reserve(result.meshes.size());
+        std::vector<int32_t> meshRemap(source.meshes.size(), -1);
 
-                // Get Indices
-                const CesiumGltf::Accessor& indexAccessor = result.accessors[primitive.indices];
-                const CesiumGltf::BufferView& indexBufferView = result.bufferViews[indexAccessor.bufferView];
-                const CesiumGltf::Buffer& indexBuffer = result.buffers[indexBufferView.buffer];
-                
-                // Get Positions
+        for (size_t meshIndex = 0; meshIndex < source.meshes.size(); ++meshIndex) {
+            const auto& mesh = source.meshes[meshIndex];
+            CesiumGltf::Mesh newMesh = mesh;
+            newMesh.primitives.clear();
+
+            for (const auto& primitive : mesh.primitives) {
+                // Skip if missing position
                 auto posIt = primitive.attributes.find("POSITION");
                 if (posIt == primitive.attributes.end()) continue;
-                const CesiumGltf::Accessor& posAccessor = result.accessors[posIt->second];
-                const CesiumGltf::BufferView& posBufferView = result.bufferViews[posAccessor.bufferView];
-                const CesiumGltf::Buffer& posBuffer = result.buffers[posBufferView.buffer];
+                const bool hasNormal = primitive.attributes.count("NORMAL") > 0;
+                const int32_t oldNormalAccessor = hasNormal ? primitive.attributes.at("NORMAL") : -1;
 
-                // Prepare data for meshopt
-                std::vector<unsigned int> indices;
-                indices.resize(indexAccessor.count);
-                
-                // Read indices (handle different component types)
-                const std::byte* indexData = indexBuffer.cesium.data.data() + indexBufferView.byteOffset + indexAccessor.byteOffset;
-                if (indexAccessor.componentType == CesiumGltf::Accessor::ComponentType::UNSIGNED_INT) {
-                    const uint32_t* src = reinterpret_cast<const uint32_t*>(indexData);
-                    for(size_t i=0; i<indexAccessor.count; ++i) indices[i] = src[i];
-                } else if (indexAccessor.componentType == CesiumGltf::Accessor::ComponentType::UNSIGNED_SHORT) {
-                    const uint16_t* src = reinterpret_cast<const uint16_t*>(indexData);
-                    for(size_t i=0; i<indexAccessor.count; ++i) indices[i] = src[i];
-                } else if (indexAccessor.componentType == CesiumGltf::Accessor::ComponentType::UNSIGNED_BYTE) {
-                    const uint8_t* src = reinterpret_cast<const uint8_t*>(indexData);
-                    for(size_t i=0; i<indexAccessor.count; ++i) indices[i] = src[i];
+                // --- 1. Gather Data ---
+                const CesiumGltf::Accessor& posAcc = source.accessors[posIt->second];
+                const CesiumGltf::BufferView& posView = source.bufferViews[posAcc.bufferView];
+                const CesiumGltf::Buffer& posBuf = source.buffers[posView.buffer];
+                const std::byte* posDataPtr = posBuf.cesium.data.data() + posView.byteOffset + posAcc.byteOffset;
+                size_t vertexCount = posAcc.count;
+                // Assume vec3 float
+
+                std::vector<uint32_t> indices;
+                if (primitive.indices >= 0) {
+                    const CesiumGltf::Accessor& idxAcc = source.accessors[primitive.indices];
+                    const CesiumGltf::BufferView& idxView = source.bufferViews[idxAcc.bufferView];
+                    const CesiumGltf::Buffer& idxBuf = source.buffers[idxView.buffer];
+                    const std::byte* idxData = idxBuf.cesium.data.data() + idxView.byteOffset + idxAcc.byteOffset;
+
+                    indices.resize(idxAcc.count);
+                    if (idxAcc.componentType == CesiumGltf::Accessor::ComponentType::UNSIGNED_INT) {
+                        const uint32_t* p = reinterpret_cast<const uint32_t*>(idxData);
+                        std::copy(p, p + idxAcc.count, indices.begin());
+                    } else if (idxAcc.componentType == CesiumGltf::Accessor::ComponentType::UNSIGNED_SHORT) {
+                        const uint16_t* p = reinterpret_cast<const uint16_t*>(idxData);
+                        std::copy(p, p + idxAcc.count, indices.begin());
+                    } else if (idxAcc.componentType == CesiumGltf::Accessor::ComponentType::UNSIGNED_BYTE) {
+                        const uint8_t* p = reinterpret_cast<const uint8_t*>(idxData);
+                        std::copy(p, p + idxAcc.count, indices.begin());
+                    }
                 } else {
-                    continue; // Unsupported
+                    // Generate sequential indices if the primitive is unindexed
+                    indices.resize(vertexCount);
+                    for (size_t k = 0; k < vertexCount; ++k) {
+                        indices[k] = static_cast<uint32_t>(k);
+                    }
+                }
+                
+                // --- 2. Welding (Key Step) ---
+                // meshopt_generateVertexRemap requires raw vertex stream.
+                // We'll use only Position for welding (simplest for LOD).
+                std::vector<uint32_t> remap(indices.size()); // remap table: index -> unique_vertex_index
+                
+                // Note: meshopt expects a contiguous vertex buffer. glTF might have strides.
+                std::vector<glm::vec3> positions(vertexCount);
+                size_t posStride = static_cast<size_t>(posView.byteStride.value_or(12));
+                if (posStride != 12) {
+                    for(size_t k=0; k<vertexCount; ++k) {
+                        const float* p = reinterpret_cast<const float*>(posDataPtr + k * posStride);
+                        positions[k] = glm::vec3(p[0], p[1], p[2]);
+                    }
+                } else {
+                    std::memcpy(positions.data(), posDataPtr, vertexCount * 12);
                 }
 
-                // Read positions
-                // We assume float vec3.
-                const std::byte* posData = posBuffer.cesium.data.data() + posBufferView.byteOffset + posAccessor.byteOffset;
-                size_t vertexCount = posAccessor.count;
-                size_t stride = posBufferView.byteStride.value_or(12); // 12 bytes for vec3 float
-
-                // Convert positions to dense float array if stride != 12 or if needed
-                // meshopt takes stride, so we can pass directly if float
-                
-                size_t targetIndexCount = static_cast<size_t>(indices.size() * targetRatio);
-#include <cfloat> // for FLT_MAX
-
-// ...
-
-                float targetError = 1.0f; // Allow larger error to enforce simplification ratio
-
-                std::vector<unsigned int> newIndices(indices.size());
-                
-                size_t simplifiedCount = meshopt_simplify(
-                    newIndices.data(),
+                size_t uniqueVertexCount = meshopt_generateVertexRemap(
+                    remap.data(),
                     indices.data(),
                     indices.size(),
-                    reinterpret_cast<const float*>(posData),
+                    positions.data(),
                     vertexCount,
-                    stride,
-                    targetIndexCount,
-                    targetError,
-                    0,
-                    nullptr
+                    sizeof(glm::vec3)
                 );
 
-                GltfInstancing::logInfo("Simplified mesh primitive: " + std::to_string(indices.size()/3) + " -> " + std::to_string(simplifiedCount/3) + " triangles (Target: " + std::to_string(targetIndexCount/3) + ")");
+                // --- 3. Re-index and Simplify ---
+                std::vector<uint32_t> weldedIndices(indices.size());
+                meshopt_remapIndexBuffer(weldedIndices.data(), indices.data(), indices.size(), remap.data());
 
-                // Resize and write to buffer
-                newIndices.resize(simplifiedCount);
+                std::vector<glm::vec3> weldedPositions(uniqueVertexCount);
+                meshopt_remapVertexBuffer(weldedPositions.data(), positions.data(), vertexCount, sizeof(glm::vec3), remap.data());
+
+                // Now simplify the WELDED mesh
+                const size_t originalIndexCount = weldedIndices.size();
+                const size_t minIndexCount = 3;
+                size_t targetIndexCount = static_cast<size_t>(originalIndexCount * targetRatio);
+                float targetError = 1.0f; // 1 meter error allowed
+
+                std::vector<uint32_t> simplifiedIndices;
+                size_t simplifiedIndexCount = 0;
+
+                if (originalIndexCount < minSimplifyIndexCount) {
+                    simplifiedIndices = weldedIndices;
+                    simplifiedIndexCount = originalIndexCount;
+                } else {
+                    if (targetIndexCount > originalIndexCount) targetIndexCount = originalIndexCount;
+                    if (targetIndexCount < minIndexCount) targetIndexCount = minIndexCount;
+                    targetIndexCount -= (targetIndexCount % 3);
+                    if (targetIndexCount < minIndexCount) targetIndexCount = minIndexCount;
+
+                    simplifiedIndices.resize(originalIndexCount);
+                    simplifiedIndexCount = meshopt_simplify(
+                        simplifiedIndices.data(),
+                        weldedIndices.data(),
+                        originalIndexCount,
+                        reinterpret_cast<const float*>(weldedPositions.data()),
+                        uniqueVertexCount,
+                        sizeof(glm::vec3),
+                        targetIndexCount,
+                        targetError,
+                        0,
+                        nullptr
+                    );
+
+                    if (simplifiedIndexCount < minIndexCount) {
+                        simplifiedIndices = weldedIndices;
+                        simplifiedIndexCount = originalIndexCount;
+                    } else {
+                        simplifiedIndices.resize(simplifiedIndexCount);
+                    }
+                }
+
+                GltfInstancing::logInfo("Simplified primitive: " + std::to_string(indices.size()/3) + " -> " + std::to_string(simplifiedIndexCount/3) + " tris");
+
+                // Skip invalid/empty primitives
+                if (simplifiedIndexCount < 3 || uniqueVertexCount == 0) {
+                    continue;
+                }
+
+                // --- 4. Write New Buffers ---
+                // We need to support ALL attributes, not just Position.
+                // For simplicity in this LOD tool, we will only preserve POSITION, NORMAL, TEXCOORD_0 if they exist.
+                // And we have to remap them using the same 'remap' table, but we effectively have to use the welded versions.
+                // However, simplification produces indices into the WELDED vertex buffer.
+                // So we must output the WELDED vertex buffer (subset of it? No, simplify reuses vertices).
                 
-                // Align to 4 bytes
-                while (targetBuffer.cesium.data.size() % 4 != 0) targetBuffer.cesium.data.push_back(std::byte(0));
+                // Build new primitive
+                CesiumGltf::MeshPrimitive newPrim = primitive;
+                newPrim.attributes.clear();
+
+                // Write Indices
+                int32_t newIdxViewIdx = static_cast<int32_t>(result.bufferViews.size());
+                size_t idxBytes = simplifiedIndices.size() * 4;
+                // Align
+                while(result.buffers[0].cesium.data.size() % 4 != 0) result.buffers[0].cesium.data.push_back(std::byte(0));
+                size_t idxOffset = result.buffers[0].cesium.data.size();
+                result.buffers[0].cesium.data.resize(idxOffset + idxBytes);
+                std::memcpy(result.buffers[0].cesium.data.data() + idxOffset, simplifiedIndices.data(), idxBytes);
                 
-                size_t byteOffset = targetBuffer.cesium.data.size();
-                size_t byteLength = newIndices.size() * sizeof(unsigned int);
+                CesiumGltf::BufferView bvIdx;
+                bvIdx.buffer = 0;
+                bvIdx.byteLength = idxBytes;
+                bvIdx.byteOffset = idxOffset;
+                bvIdx.target = CesiumGltf::BufferView::Target::ELEMENT_ARRAY_BUFFER;
+                result.bufferViews.push_back(bvIdx);
+
+                CesiumGltf::Accessor accIdx;
+                accIdx.bufferView = newIdxViewIdx;
+                accIdx.componentType = CesiumGltf::Accessor::ComponentType::UNSIGNED_INT;
+                accIdx.count = simplifiedIndices.size();
+                accIdx.type = CesiumGltf::Accessor::Type::SCALAR;
+                int32_t newIdxAccIdx = static_cast<int32_t>(result.accessors.size());
+                result.accessors.push_back(accIdx);
+                newPrim.indices = newIdxAccIdx;
+
+                // Write Attributes (Welded)
+                // We reuse the same vertex buffer 'remap' for all attributes.
+                // Warning: If we welded based on position only, normals might be averaged/mixed arbitrarily by remapVertexBuffer.
+                // For LODs this is acceptable.
                 
-                targetBuffer.cesium.data.resize(byteOffset + byteLength);
-                std::memcpy(targetBuffer.cesium.data.data() + byteOffset, newIndices.data(), byteLength);
+                // Position
+                {
+                    int32_t newPosViewIdx = static_cast<int32_t>(result.bufferViews.size());
+                    size_t posBytes = uniqueVertexCount * 12; // vec3
+                    while(result.buffers[0].cesium.data.size() % 4 != 0) result.buffers[0].cesium.data.push_back(std::byte(0));
+                    size_t posOffset = result.buffers[0].cesium.data.size();
+                    result.buffers[0].cesium.data.resize(posOffset + posBytes);
+                    std::memcpy(result.buffers[0].cesium.data.data() + posOffset, weldedPositions.data(), posBytes);
+
+                    CesiumGltf::BufferView bvPos;
+                    bvPos.buffer = 0;
+                    bvPos.byteLength = posBytes;
+                    bvPos.byteOffset = posOffset;
+                    bvPos.target = CesiumGltf::BufferView::Target::ARRAY_BUFFER;
+                    result.bufferViews.push_back(bvPos);
+
+                    CesiumGltf::Accessor accPos;
+                    accPos.bufferView = newPosViewIdx;
+                    accPos.componentType = CesiumGltf::Accessor::ComponentType::FLOAT;
+                    accPos.count = uniqueVertexCount;
+                    accPos.type = CesiumGltf::Accessor::Type::VEC3;
+                    // Compute min/max for positions
+                    glm::vec3 minV(FLT_MAX);
+                    glm::vec3 maxV(-FLT_MAX);
+                    for (const auto& v : weldedPositions) {
+                        minV.x = std::min(minV.x, v.x);
+                        minV.y = std::min(minV.y, v.y);
+                        minV.z = std::min(minV.z, v.z);
+                        maxV.x = std::max(maxV.x, v.x);
+                        maxV.y = std::max(maxV.y, v.y);
+                        maxV.z = std::max(maxV.z, v.z);
+                    }
+                    accPos.min = { minV.x, minV.y, minV.z };
+                    accPos.max = { maxV.x, maxV.y, maxV.z };
+                    int32_t newPosAccIdx = static_cast<int32_t>(result.accessors.size());
+                    result.accessors.push_back(accPos);
+                    newPrim.attributes["POSITION"] = newPosAccIdx;
+                }
+
+                // Normal (if exists)
+                if (hasNormal && oldNormalAccessor >= 0 && oldNormalAccessor < static_cast<int32_t>(source.accessors.size())) {
+                    const CesiumGltf::Accessor& oldAcc = source.accessors[oldNormalAccessor];
+                    const CesiumGltf::BufferView& oldView = source.bufferViews[oldAcc.bufferView];
+                    const std::byte* oldData = source.buffers[oldView.buffer].cesium.data.data() + oldView.byteOffset + oldAcc.byteOffset;
+                    
+                    std::vector<glm::vec3> normals(vertexCount); // Assuming vec3 float
+                    size_t normalStride = static_cast<size_t>(oldView.byteStride.value_or(12));
+                    if (normalStride != 12) {
+                         for(size_t k=0; k<vertexCount; ++k) {
+                            const float* p = reinterpret_cast<const float*>(oldData + k * normalStride);
+                            normals[k] = glm::vec3(p[0], p[1], p[2]);
+                        }
+                    } else {
+                        std::memcpy(normals.data(), oldData, vertexCount * 12);
+                    }
+
+                    std::vector<glm::vec3> weldedNormals(uniqueVertexCount);
+                    meshopt_remapVertexBuffer(weldedNormals.data(), normals.data(), vertexCount, sizeof(glm::vec3), remap.data());
+
+                    int32_t newViewIdx = static_cast<int32_t>(result.bufferViews.size());
+                    size_t bytes = uniqueVertexCount * 12;
+                    while(result.buffers[0].cesium.data.size() % 4 != 0) result.buffers[0].cesium.data.push_back(std::byte(0));
+                    size_t offset = result.buffers[0].cesium.data.size();
+                    result.buffers[0].cesium.data.resize(offset + bytes);
+                    std::memcpy(result.buffers[0].cesium.data.data() + offset, weldedNormals.data(), bytes);
+
+                    CesiumGltf::BufferView bv;
+                    bv.buffer = 0;
+                    bv.byteLength = bytes;
+                    bv.byteOffset = offset;
+                    bv.target = CesiumGltf::BufferView::Target::ARRAY_BUFFER;
+                    result.bufferViews.push_back(bv);
+
+                    CesiumGltf::Accessor acc;
+                    acc.bufferView = newViewIdx;
+                    acc.componentType = CesiumGltf::Accessor::ComponentType::FLOAT;
+                    acc.count = uniqueVertexCount;
+                    acc.type = CesiumGltf::Accessor::Type::VEC3;
+                    result.accessors.push_back(acc);
+                    newPrim.attributes["NORMAL"] = static_cast<int32_t>(result.accessors.size() - 1);
+                }
                 
-                // Create new BufferView
-                CesiumGltf::BufferView newView;
-                newView.buffer = static_cast<int32_t>(targetBufferIndex);
-                newView.byteOffset = static_cast<int64_t>(byteOffset);
-                newView.byteLength = static_cast<int64_t>(byteLength);
-                newView.target = CesiumGltf::BufferView::Target::ELEMENT_ARRAY_BUFFER;
-                
-                int32_t newViewIndex = static_cast<int32_t>(result.bufferViews.size());
-                result.bufferViews.push_back(newView);
-                
-                // Create new Accessor
-                CesiumGltf::Accessor newAccessor;
-                newAccessor.bufferView = newViewIndex;
-                newAccessor.byteOffset = 0;
-                newAccessor.componentType = CesiumGltf::Accessor::ComponentType::UNSIGNED_INT;
-                newAccessor.count = static_cast<int64_t>(newIndices.size());
-                newAccessor.type = CesiumGltf::Accessor::Type::SCALAR;
-                
-                int32_t newAccessorIndex = static_cast<int32_t>(result.accessors.size());
-                result.accessors.push_back(newAccessor);
-                
-                // Update Primitive
-                primitive.indices = newAccessorIndex;
+                // Only handling POS and NORMAL for now to save space/time
+                // Can add UV similarly if needed
+                newMesh.primitives.push_back(std::move(newPrim));
+            }
+
+            if (!newMesh.primitives.empty()) {
+                meshRemap[meshIndex] = static_cast<int32_t>(newMeshes.size());
+                newMeshes.push_back(std::move(newMesh));
             }
         }
+
+        result.meshes = std::move(newMeshes);
+
+        // Remap node mesh indices to new mesh list, drop nodes with removed meshes
+        for (auto& node : result.nodes) {
+            if (node.mesh >= 0) {
+                if (node.mesh < static_cast<int32_t>(meshRemap.size()) && meshRemap[node.mesh] >= 0) {
+                    node.mesh = meshRemap[node.mesh];
+                } else {
+                    node.mesh = -1;
+                }
+            }
+        }
+
+        // Remove empty nodes (no mesh and no children) and remap indices
+        std::vector<int32_t> nodeRemap(result.nodes.size(), -1);
+        std::vector<CesiumGltf::Node> newNodes;
+        newNodes.reserve(result.nodes.size());
+
+        // Depth-first prune: returns new node index or -1 if pruned
+        std::function<int32_t(int32_t)> pruneNode = [&](int32_t nodeIndex) -> int32_t {
+            if (nodeIndex < 0 || nodeIndex >= static_cast<int32_t>(result.nodes.size())) return -1;
+            if (nodeRemap[nodeIndex] >= 0) return nodeRemap[nodeIndex];
+
+            const auto& oldNode = result.nodes[nodeIndex];
+            CesiumGltf::Node newNode = oldNode;
+            newNode.children.clear();
+
+            for (int32_t child : oldNode.children) {
+                int32_t newChild = pruneNode(child);
+                if (newChild >= 0) newNode.children.push_back(newChild);
+            }
+
+            bool hasMesh = newNode.mesh >= 0;
+            bool hasChildren = !newNode.children.empty();
+            if (!hasMesh && !hasChildren) {
+                nodeRemap[nodeIndex] = -1;
+                return -1;
+            }
+
+            int32_t newIndex = static_cast<int32_t>(newNodes.size());
+            nodeRemap[nodeIndex] = newIndex;
+            newNodes.push_back(std::move(newNode));
+            return newIndex;
+        };
+
+        // Rebuild scene roots
+        for (auto& scene : result.scenes) {
+            std::vector<int32_t> newRoots;
+            for (int32_t root : scene.nodes) {
+                int32_t newRoot = pruneNode(root);
+                if (newRoot >= 0) newRoots.push_back(newRoot);
+            }
+            scene.nodes = std::move(newRoots);
+        }
+        result.nodes = std::move(newNodes);
+
+        // Remove unused materials and remap indices
+        std::vector<int32_t> materialRemap(result.materials.size(), -1);
+        std::vector<CesiumGltf::Material> newMaterials;
+        newMaterials.reserve(result.materials.size());
+
+        for (auto& mesh : result.meshes) {
+            for (auto& prim : mesh.primitives) {
+                if (prim.material >= 0 && prim.material < static_cast<int32_t>(materialRemap.size())) {
+                    if (materialRemap[prim.material] < 0) {
+                        materialRemap[prim.material] = static_cast<int32_t>(newMaterials.size());
+                        newMaterials.push_back(result.materials[prim.material]);
+                    }
+                    prim.material = materialRemap[prim.material];
+                }
+            }
+        }
+        result.materials = std::move(newMaterials);
         
+        // Update buffer byte lengths
+        if (!result.buffers.empty()) {
+            result.buffers[0].byteLength = static_cast<int64_t>(result.buffers[0].cesium.data.size());
+        }
+
         return result;
     }
 
 } // namespace NonInstancingLOD
-

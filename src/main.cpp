@@ -47,6 +47,7 @@ struct ToolConfiguration {
     bool enableNonInstancedLodGeneration = false;
     int nonInstancedLodLevelCount = 3;
     double nonInstancedLodRatio = 0.5;
+    size_t nonInstancedMinSimplifyIndexCount = 300; // Skip tiny meshes (100 triangles)
 
     // Flags to track if a parameter was set
     bool inputDirectorySet = false;
@@ -210,6 +211,8 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 try { config.nonInstancedLodLevelCount = std::stoi(value); } catch(...) {}
             } else if (key == "non_instanced_lod_ratio") {
                 try { config.nonInstancedLodRatio = std::stod(value); } catch(...) {}
+            } else if (key == "non_instanced_min_simplify_index_count") {
+                try { config.nonInstancedMinSimplifyIndexCount = static_cast<size_t>(std::stoll(value)); } catch(...) {}
             }
             else {
                 GltfInstancing::logWarning("Unknown configuration key in config file (line " + std::to_string(lineNumber) + "): " + key);
@@ -893,6 +896,7 @@ int main(int argc, char* argv[]) {
              lodOutputDir,
              config.nonInstancedLodLevelCount,
              (float)config.nonInstancedLodRatio,
+             config.nonInstancedMinSimplifyIndexCount,
              "tileset.json"
          );
     }

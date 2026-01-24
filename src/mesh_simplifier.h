@@ -24,6 +24,7 @@ namespace NonInstancingLOD {
             const std::filesystem::path& outputDir,
             int levels,
             float ratio,
+            size_t minSimplifyIndexCount,
             const std::string& tilesetName = "tileset_lod.json"
         );
 
@@ -35,7 +36,11 @@ namespace NonInstancingLOD {
          * @param targetRatio The target ratio of triangles to keep (0.0 - 1.0).
          * @return A new CesiumGltf::Model with simplified meshes.
          */
-        static CesiumGltf::Model simplifyModel(const CesiumGltf::Model& source, float targetRatio);
+        static CesiumGltf::Model simplifyModel(
+            const CesiumGltf::Model& source,
+            float targetRatio,
+            size_t minSimplifyIndexCount
+        );
     };
 
 } // namespace NonInstancingLOD

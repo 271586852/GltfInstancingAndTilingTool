@@ -57,3 +57,13 @@ enable_semantic_check = true
 enable_geometric_check = true
 # 语义数据路径 (.RISCRVT)
 semantic_data_path =
+
+# --- 非实例化 LOD 设置 (Non-Instanced LOD) ---
+# 是否启用非实例化模型的 LOD 生成 (网格简化)。
+enable_non_instanced_lod_generation = true
+# LOD 层级数量 (例如 3 表示生成 LOD1, LOD2, LOD3)。
+non_instanced_lod_level_count = 3
+# 每级 LOD 的简化比率 (0.0-1.0)，例如 0.5 表示面数减半。
+non_instanced_lod_ratio = 0.5
+# 最小索引数量阈值，小于该值则跳过简化（300 ≈ 100 个三角形）
+non_instanced_min_simplify_index_count = 300
