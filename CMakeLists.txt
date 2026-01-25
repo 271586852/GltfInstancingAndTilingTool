@@ -48,10 +48,10 @@ set(PROJECT_SOURCES
     src/instancing_detector.cpp
     src/glb_writer.cpp
     src/semantic_parser.cpp
-    src/lod_manager.cpp
+    src/instancingLOD_manager.cpp
     src/tileset_writer.cpp
     src/utilities.cpp
-    src/mesh_simplifier.cpp
+    src/NonInstancingLOD_manager.cpp
     
     #src/utils.cpp
     #src/tileset_generator.cpp

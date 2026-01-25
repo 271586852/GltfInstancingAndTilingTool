@@ -4,8 +4,8 @@
 #include "tileset_writer.h"
 #include "utilities.h" // For logging
 #include "semantic_parser.h" // 新增
-#include "lod_manager.h"     // 新增
-#include "mesh_simplifier.h" // 新增
+#include "instancingLOD_manager.h"     // 新增
+#include "NonInstancingLOD_manager.h" // 新增
 
 #include <iostream>
 #include <filesystem>
@@ -426,7 +426,7 @@ void writeLodAnalysisCsv(const ToolConfiguration& config,
                         double originalFileSizeMB,
                         size_t originalVertices,
                         size_t originalInstances) {
-    std::filesystem::path csvPath = std::filesystem::path(config.outputDirectory) / "lod_output" / "lod_analysis.csv";
+    std::filesystem::path csvPath = std::filesystem::path(config.outputDirectory) / "instancing_lod_output" / "lod_analysis.csv";
     std::ofstream csvFile(csvPath);
     
     if (csvFile.is_open()) {
@@ -890,8 +890,8 @@ int main(int argc, char* argv[]) {
     // --- Non-Instanced LOD Generation ---
     if (config.enableNonInstancedLodGeneration && nonInstancedWriteResult) {
          GltfInstancing::logInfo("Generating LODs for non-instanced meshes...");
-         std::filesystem::path lodOutputDir = std::filesystem::path(config.outputDirectory) / "non_instanced_lods";
-         NonInstancingLOD::MeshSimplifier::generateNonInstancingLodChain(
+         std::filesystem::path lodOutputDir = std::filesystem::path(config.outputDirectory) / "non_instancing_lod_output";
+         NonInstancingLOD::NonInstancingLODManager::generateNonInstancingLodChain(
              nonInstancedWriteResult->first,
              lodOutputDir,
              config.nonInstancedLodLevelCount,
@@ -939,10 +939,10 @@ int main(int argc, char* argv[]) {
         lodConfig.lod4_sizeTolerance = config.lod4SizeTolerance;
         lodConfig.lod3_aspectRatioTolerance = config.lod3AspectRatioTolerance;
 
-        GltfInstancing::LODManager lodManager(lodConfig);
+        GltfInstancing::InstancingLODManager lodManager(lodConfig);
         auto lodResults = lodManager.generateLODs(detectionResult, loadedModels, semanticParser);
 
-        std::filesystem::path lodOutputDir = std::filesystem::path(config.outputDirectory) / "lod_output";
+        std::filesystem::path lodOutputDir = std::filesystem::path(config.outputDirectory) / "instancing_lod_output";
         std::filesystem::create_directories(lodOutputDir);
 
         // Map to store LOD hierarchy nodes
@@ -1029,7 +1029,7 @@ int main(int argc, char* argv[]) {
                 if (!firstNodeFound) {
                     rootNode = levelNodes[l];
                     // Root node geometric error should be set based on scene size or default
-                    // But here we take what LODManager calculated
+                    // But here we take what InstancingLODManager calculated
                     currentNode = &rootNode;
                     firstNodeFound = true;
                 } else {

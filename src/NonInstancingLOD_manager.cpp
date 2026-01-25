@@ -1,4 +1,4 @@
-#include "mesh_simplifier.h"
+#include "NonInstancingLOD_manager.h"
 #include "meshoptimizer.h"
 #include "utilities.h"
 #include "tileset_writer.h"
@@ -21,7 +21,7 @@ namespace NonInstancingLOD {
         double fileSizeMB;
     };
 
-    void MeshSimplifier::generateNonInstancingLodChain(
+    void NonInstancingLODManager::generateNonInstancingLodChain(
         const std::filesystem::path& inputPath,
         const std::filesystem::path& outputDir,
         int levels,
@@ -30,7 +30,7 @@ namespace NonInstancingLOD {
         const std::string& tilesetName
     ) {
         if (!std::filesystem::exists(inputPath)) {
-        GltfInstancing::logError("MeshSimplifier: Input file does not exist: " + inputPath.string());
+        GltfInstancing::logError("NonInstancingLODManager: Input file does not exist: " + inputPath.string());
             return;
         }
 
@@ -42,21 +42,21 @@ namespace NonInstancingLOD {
         std::vector<std::byte> data;
         std::ifstream file(inputPath, std::ios::binary | std::ios::ate);
         if (!file) {
-            GltfInstancing::logError("MeshSimplifier: Failed to open file: " + inputPath.string());
+            GltfInstancing::logError("NonInstancingLODManager: Failed to open file: " + inputPath.string());
             return;
         }
         std::streamsize size = file.tellg();
         file.seekg(0, std::ios::beg);
         data.resize(size);
         if (!file.read(reinterpret_cast<char*>(data.data()), size)) {
-             GltfInstancing::logError("MeshSimplifier: Failed to read file: " + inputPath.string());
+             GltfInstancing::logError("NonInstancingLODManager: Failed to read file: " + inputPath.string());
              return;
         }
         
         CesiumGltfReader::GltfReader reader;
         auto modelResult = reader.readGltf(gsl::span<const std::byte>(data));
         if (!modelResult.model) {
-            GltfInstancing::logError("MeshSimplifier: Failed to parse GLB: " + inputPath.string());
+            GltfInstancing::logError("NonInstancingLODManager: Failed to parse GLB: " + inputPath.string());
             return;
         }
 
@@ -94,7 +94,7 @@ namespace NonInstancingLOD {
             allStats.push_back(lod0Stats);
 
         } catch (const std::exception& e) {
-            GltfInstancing::logError("MeshSimplifier: Failed to copy LOD0: " + std::string(e.what()));
+            GltfInstancing::logError("NonInstancingLODManager: Failed to copy LOD0: " + std::string(e.what()));
             return;
         }
 
@@ -121,13 +121,13 @@ namespace NonInstancingLOD {
 
             CesiumGltfWriter::GltfWriterResult writerResult = writer.writeGlb(simplified, bufferSpan, writerOptions);
             if (writerResult.gltfBytes.empty()) {
-                GltfInstancing::logError("MeshSimplifier: Failed to write GLB: " + lodPath.string());
+                GltfInstancing::logError("NonInstancingLODManager: Failed to write GLB: " + lodPath.string());
                 return;
             }
 
             std::ofstream outFile(lodPath, std::ios::binary);
             if (!outFile) {
-                GltfInstancing::logError("MeshSimplifier: Failed to open output file: " + lodPath.string());
+                GltfInstancing::logError("NonInstancingLODManager: Failed to open output file: " + lodPath.string());
                 return;
             }
             outFile.write(reinterpret_cast<const char*>(writerResult.gltfBytes.data()), writerResult.gltfBytes.size());
@@ -213,7 +213,7 @@ namespace NonInstancingLOD {
         GltfInstancing::logInfo("Non-Instanced LOD chain generated at: " + outputDir.string());
     }
 
-    CesiumGltf::Model MeshSimplifier::simplifyModel(
+    CesiumGltf::Model NonInstancingLODManager::simplifyModel(
         const CesiumGltf::Model& source,
         float targetRatio,
         size_t minSimplifyIndexCount

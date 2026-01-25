@@ -1,5 +1,5 @@
-#ifndef LOD_MANAGER_H
-#define LOD_MANAGER_H
+#ifndef INSTANCING_LOD_MANAGER_H
+#define INSTANCING_LOD_MANAGER_H
 
 #include "utilities.h" // For BoundingBox, MeshInstanceInfo, etc.
 #include "semantic_parser.h"
@@ -13,7 +13,7 @@
 
 namespace GltfInstancing {
 
-    // 扩展的 Mesh 信息，包含几何特征和语义数据
+    // 扩展的 Mesh 信息，包含几何特征与语义数据（用于语义+几何联合驱动的 LOD 分层）
     struct ExtendedMeshInfo {
         int originalMeshId;       // 对应 LoadedGltfModel 中的 uniqueId 或全局索引
         std::string meshName;     // 用于关联语义 (Actor.Hash)
@@ -56,13 +56,13 @@ namespace GltfInstancing {
         double lod3_aspectRatioTolerance = 0.20; // 20% 长宽比差异
     };
 
-    class LODManager {
+    class InstancingLODManager {
     public:
-        LODManager(const LODConfig& config);
-        ~LODManager();
+        InstancingLODManager(const LODConfig& config);
+        ~InstancingLODManager();
 
-        // 核心函数：生成所有 LOD 层级
-        // 输入：LOD5 的原始检测结果 (InstancingDetectionResult) + 语义数据
+        // 核心函数：生成所有 LOD 层级（语义+几何联合驱动）
+        // 输入：LOD5 的原始检测结果 (InstancingDetectionResult) + 语义数据 + 几何特征
         // 输出：按层级组织的 LOD 数据
         std::map<int, LODLevelResult> generateLODs(
             const InstancingDetectionResult& lod5Data,
@@ -119,4 +119,4 @@ namespace GltfInstancing {
 
 } // namespace GltfInstancing
 
-#endif // LOD_MANAGER_H
+#endif // INSTANCING_LOD_MANAGER_H

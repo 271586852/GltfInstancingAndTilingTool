@@ -1,5 +1,5 @@
-#ifndef MESH_SIMPLIFIER_H
-#define MESH_SIMPLIFIER_H
+#ifndef NON_INSTANCING_LOD_MANAGER_H
+#define NON_INSTANCING_LOD_MANAGER_H
 
 #include <CesiumGltf/Model.h>
 #include <filesystem>
@@ -8,7 +8,7 @@
 
 namespace NonInstancingLOD {
 
-    class MeshSimplifier {
+    class NonInstancingLODManager {
     public:
         /**
          * @brief Generates a chain of LODs for a given GLB file using mesh simplification.
@@ -45,5 +45,5 @@ namespace NonInstancingLOD {
 
 } // namespace NonInstancingLOD
 
-#endif // MESH_SIMPLIFIER_H
+#endif // NON_INSTANCING_LOD_MANAGER_H
 

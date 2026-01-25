@@ -1,4 +1,4 @@
-#include "lod_manager.h"
+#include "instancingLOD_manager.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -7,11 +7,11 @@
 
 namespace GltfInstancing {
 
-    LODManager::LODManager(const LODConfig& config) : _config(config) {}
+    InstancingLODManager::InstancingLODManager(const LODConfig& config) : _config(config) {}
 
-    LODManager::~LODManager() {}
+    InstancingLODManager::~InstancingLODManager() {}
 
-    std::map<int, LODLevelResult> LODManager::generateLODs(
+    std::map<int, LODLevelResult> InstancingLODManager::generateLODs(
         const InstancingDetectionResult& lod5Data,
         const std::vector<LoadedGltfModel>& loadedModels,
         const SemanticParser& semanticParser
@@ -38,7 +38,7 @@ namespace GltfInstancing {
 
         // 3. LOD3 (Class)
         if (_config.maxLODLevels >= 3) {
-            // LOD3 基于 LOD4 的结果继续聚合
+            // LOD3 基于 LOD4 的结果继续聚�?
             results[3] = buildLOD3(results[4].nodes);
             logMessage("LOD3 generated: " + std::to_string(results[3].nodes.size()) + " unique meshes.");
         }
@@ -51,7 +51,7 @@ namespace GltfInstancing {
 
         // 5. LOD1 (Proxy)
         if (_config.maxLODLevels >= 1) {
-            // LOD1 基于 LOD2 (或者任何一级) 生成，因为它完全替换了几何体
+            // LOD1 基于 LOD2 (或者任何一�? 生成，因为它完全替换了几何体
             results[1] = buildLOD1(results[2].nodes);
             logMessage("LOD1 generated: " + std::to_string(results[1].nodes.size()) + " unique meshes (Proxies).");
         }
@@ -59,7 +59,7 @@ namespace GltfInstancing {
         return results;
     }
 
-    std::vector<ExtendedMeshInfo> LODManager::initializeLOD5(
+    std::vector<ExtendedMeshInfo> InstancingLODManager::initializeLOD5(
         const InstancingDetectionResult& lod5Data,
         const std::vector<LoadedGltfModel>& loadedModels,
         const SemanticParser& semanticParser
@@ -69,7 +69,7 @@ namespace GltfInstancing {
         // 处理 Instanced Groups
         for (const auto& group : lod5Data.instancedGroups) {
             ExtendedMeshInfo info;
-            info.originalMeshId = group.representativeMeshIndexInModel; // 这里可能需要全局唯一ID，暂用局部
+            info.originalMeshId = group.representativeMeshIndexInModel; // 这里可能需要全局唯一ID，暂用局�?
             info.sourceModelIndex = group.representativeGltfModelIndex;
             info.sourceMeshIndex = group.representativeMeshIndexInModel;
             info.meshName = group.representativeMeshName;
@@ -80,12 +80,12 @@ namespace GltfInstancing {
             if (info.sourceMeshIndex >= 0 && info.sourceMeshIndex < model.meshes.size()) {
                 const auto& mesh = model.meshes[info.sourceMeshIndex];
                 info.vertexCount = 0;
-                // 计算 AABB 和 顶点数
+                // 计算 AABB �?顶点�?
                 for (const auto& prim : mesh.primitives) {
                     BoundingBox primBox = getPrimitiveBoundingBox(model, prim);
                     info.aabb.merge(primBox);
                     
-                    // 估算顶点数 (通过 POSITION accessor)
+                    // 估算顶点�?(通过 POSITION accessor)
                      auto posIt = prim.attributes.find("POSITION");
                      if (posIt != prim.attributes.end()) {
                          const auto& accessor = model.accessors[posIt->second];
@@ -104,7 +104,7 @@ namespace GltfInstancing {
             if (semOpt.has_value()) {
                 info.semantic = semOpt.value();
             } else {
-                // 如果没有语义，给默认值或保留空
+                // 如果没有语义，给默认值或保留�?
                 info.semantic.category = "Unknown";
                 info.semantic.family = "Unknown";
             }
@@ -113,17 +113,17 @@ namespace GltfInstancing {
         }
 
         // TODO: 处理 Non-Instanced Meshes (也可以视为只有一个实例的 Group)
-        // 为了简化，这里暂时只处理检测到的 Instanced Groups
-        // 实际项目中应该把所有 Mesh 都纳入 LOD 管理
+        // 为了简化，这里暂时只处理检测到�?Instanced Groups
+        // 实际项目中应该把所�?Mesh 都纳�?LOD 管理
 
         return result;
     }
 
     // --- LOD4: Family Clustering ---
-    LODLevelResult LODManager::buildLOD4(const std::vector<ExtendedMeshInfo>& lod5Meshes) {
+    LODLevelResult InstancingLODManager::buildLOD4(const std::vector<ExtendedMeshInfo>& lod5Meshes) {
         LODLevelResult result;
         result.level = 4;
-        result.geometricError = 0.0; // 将计算最大误差
+        result.geometricError = 0.0; // 将计算最大误�?
 
         // 1. Group by Family
         std::map<std::string, std::vector<const ExtendedMeshInfo*>> familyGroups;
@@ -145,11 +145,11 @@ namespace GltfInstancing {
                 continue;
             }
 
-            // 几何子聚类 (Geometric Sub-clustering)
-            // 即使 Family 相同，如果尺寸差异太大，也不能合并
+            // 几何子聚�?(Geometric Sub-clustering)
+            // 即使 Family 相同，如果尺寸差异太大，也不能合�?
             std::vector<std::vector<const ExtendedMeshInfo*>> subClusters;
             
-            // 简单的贪心聚类: 取第一个作为种子，找所有相似的；剩下的再取第一个...
+            // 简单的贪心聚类: 取第一个作为种子，找所有相似的；剩下的再取第一�?..
             std::vector<bool> processed(group.size(), false);
             for (size_t i = 0; i < group.size(); ++i) {
                 if (processed[i]) continue;
@@ -163,7 +163,7 @@ namespace GltfInstancing {
                 for (size_t j = i + 1; j < group.size(); ++j) {
                     if (processed[j]) continue;
 
-                    // 检查体积/尺寸差异
+                    // 检查体�?尺寸差异
                     double volDiff = std::abs(group[j]->volume - baseVol) / (baseVol + 1e-6);
                     if (volDiff < _config.lod4_sizeTolerance) { // e.g. 5%
                         currentCluster.push_back(group[j]);
@@ -178,8 +178,8 @@ namespace GltfInstancing {
                 // 策略 0: 找体积最接近平均值的 (Representative)
                 const ExtendedMeshInfo* rep = findRepresentative(cluster, 0);
                 
-                ExtendedMeshInfo newNode = *rep; // 复制代表的信息
-                newNode.instances.clear(); // 清空实例，准备合并
+                ExtendedMeshInfo newNode = *rep; // 复制代表的信�?
+                newNode.instances.clear(); // 清空实例，准备合�?
 
                 // 合并所有成员的实例
                 double maxErrorInCluster = 0.0;
@@ -203,7 +203,7 @@ namespace GltfInstancing {
     }
 
     // --- LOD3: Category Clustering ---
-    LODLevelResult LODManager::buildLOD3(const std::vector<ExtendedMeshInfo>& lod4Meshes) {
+    LODLevelResult InstancingLODManager::buildLOD3(const std::vector<ExtendedMeshInfo>& lod4Meshes) {
         LODLevelResult result;
         result.level = 3;
         result.geometricError = 0.0;
@@ -213,7 +213,7 @@ namespace GltfInstancing {
         for (const auto& mesh : lod4Meshes) {
             std::string key = mesh.semantic.category;
              if (key.empty() || key == "Unknown") {
-                // 无法聚类的单独处理
+                // 无法聚类的单独处�?
                 categoryGroups["__UNIQUE__" + std::to_string(mesh.sourceModelIndex)].push_back(&mesh);
             } else {
                 categoryGroups[key].push_back(&mesh);
@@ -264,54 +264,54 @@ namespace GltfInstancing {
             }
         }
         
-        // 确保 LOD3 误差不小于 LOD4 (单调性)
-        // 实际应用中通常不需要强制，因为 Tileset 结构会处理
+        // 确保 LOD3 误差不小�?LOD4 (单调�?
+        // 实际应用中通常不需要强制，因为 Tileset 结构会处�?
         return result;
     }
 
     // --- LOD2: Abstract Level ---
-    LODLevelResult LODManager::buildLOD2(const std::vector<ExtendedMeshInfo>& lod3Meshes) {
+    LODLevelResult InstancingLODManager::buildLOD2(const std::vector<ExtendedMeshInfo>& lod3Meshes) {
         // 暂时简化：直接复制 LOD3，或者在这里应用更激进的 Category 合并
-        // 比如将 "Office Chair" 和 "Dining Chair" 合并为 "Chair"
-        // 目前没有映射表，暂时透传，但增加误差阈值
-        LODLevelResult result = buildLOD3(lod3Meshes); // 复用逻辑，但因为输入已经是 LOD3，通常不会有太多变化除非映射表存在
+        // 比如�?"Office Chair" �?"Dining Chair" 合并�?"Chair"
+        // 目前没有映射表，暂时透传，但增加误差阈�?
+        LODLevelResult result = buildLOD3(lod3Meshes); // 复用逻辑，但因为输入已经�?LOD3，通常不会有太多变化除非映射表存在
         result.level = 2;
-        result.geometricError *= 2.0; // 简单放大误差
+        result.geometricError *= 2.0; // 简单放大误�?
         return result;
     }
 
     // --- LOD1: Proxy Level (Cube) ---
-    LODLevelResult LODManager::buildLOD1(const std::vector<ExtendedMeshInfo>& lod2Meshes) {
+    LODLevelResult InstancingLODManager::buildLOD1(const std::vector<ExtendedMeshInfo>& lod2Meshes) {
         LODLevelResult result;
         result.level = 1;
         result.geometricError = 1000.0; // 很大
 
         // 创建一个特殊的 Proxy Mesh Info
-        // 在实际 GLB 写入时，我们需要识别这个标志，写入一个 Unit Cube
+        // 在实�?GLB 写入时，我们需要识别这个标志，写入一�?Unit Cube
         ExtendedMeshInfo proxyInfo;
         proxyInfo.meshName = "LOD1_Proxy_Cube";
-        proxyInfo.sourceModelIndex = -1; // -1 表示生成的 Proxy
+        proxyInfo.sourceModelIndex = -1; // -1 表示生成�?Proxy
         proxyInfo.sourceMeshIndex = -1;
         
         // 收集所有实例，并修改它们的矩阵
         for (const auto& mesh : lod2Meshes) {
-            // 计算该 Mesh 的 AABB 尺寸和中心偏移
+            // 计算�?Mesh �?AABB 尺寸和中心偏�?
             glm::dvec3 size = mesh.aabb.max - mesh.aabb.min;
             glm::dvec3 center = (mesh.aabb.max + mesh.aabb.min) * 0.5;
 
             for (const auto& inst : mesh.instances) {
                 MeshInstanceInfo newInst = inst;
                 
-                // 变换逻辑：
-                // 原始矩阵 M 将 (0,0,0) 变换到世界位置 P
-                // 我们需要将 Unit Cube (假设中心在 0, 边长 1) 变换到 Mesh 的 AABB
+                // 变换逻辑�?
+                // 原始矩阵 M �?(0,0,0) 变换到世界位�?P
+                // 我们需要将 Unit Cube (假设中心�?0, 边长 1) 变换�?Mesh �?AABB
                 
                 // 1. 应用原始变换
                 glm::dmat4 originalMat = inst.transform.toMat4();
                 
                 // 2. 在局部空间缩放和位移
                 // Cube (1x1x1) -> Scale(size) -> Translate(center) -> OriginalTransform
-                // 注意：这里的 center 是 Mesh 在其自身模型空间中的 AABB 中心
+                // 注意：这里的 center �?Mesh 在其自身模型空间中的 AABB 中心
                 
                 glm::dmat4 localFix = glm::translate(glm::dmat4(1.0), center) * glm::scale(glm::dmat4(1.0), size);
                 
@@ -328,9 +328,9 @@ namespace GltfInstancing {
 
     // --- Helpers ---
 
-    double LODManager::calculateGeometricError(const ExtendedMeshInfo& original, const ExtendedMeshInfo& representative) {
+    double InstancingLODManager::calculateGeometricError(const ExtendedMeshInfo& original, const ExtendedMeshInfo& representative) {
         // 简化计算：对角线长度差 + AABB 中心距离
-        // 更精确的应该是 Hausdorff，但这里用 AABB 估算
+        // 更精确的应该�?Hausdorff，但这里�?AABB 估算
         double diagDiff = std::abs(original.diagonal - representative.diagonal);
         
         glm::dvec3 c1 = (original.aabb.max + original.aabb.min) * 0.5;
@@ -340,7 +340,7 @@ namespace GltfInstancing {
         return diagDiff + centerDist;
     }
 
-    const ExtendedMeshInfo* LODManager::findRepresentative(
+    const ExtendedMeshInfo* InstancingLODManager::findRepresentative(
         const std::vector<const ExtendedMeshInfo*>& group, 
         int strategy
     ) {
@@ -376,12 +376,12 @@ namespace GltfInstancing {
         return group[0];
     }
 
-    double LODManager::getAspectRatio(const BoundingBox& box) {
+    double InstancingLODManager::getAspectRatio(const BoundingBox& box) {
         glm::dvec3 size = box.max - box.min;
         // 排序 x, y, z
         std::vector<double> dims = { size.x, size.y, size.z };
         std::sort(dims.begin(), dims.end());
-        // 长 / 宽 (忽略高度/厚度)
+        // �?/ �?(忽略高度/厚度)
         if (dims[1] < 1e-6) return 1.0;
         return dims[2] / dims[1];
     }

@@ -4,7 +4,7 @@
 #include "utilities.h"
 #include "instancing_detector.h" // For InstancingDetectionResult and related structs
 #include "glb_reader.h"         // For LoadedGltfModel (to access original model data)
-#include "lod_manager.h"        // For LODLevelResult
+#include "instancingLOD_manager.h"        // For LODLevelResult
 
 #include <vector>
 #include <string>
