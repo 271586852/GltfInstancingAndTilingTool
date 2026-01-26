@@ -364,6 +364,20 @@ namespace GltfInstancing {
             transAcc.componentType = CesiumGltf::Accessor::ComponentType::FLOAT;
             transAcc.type = CesiumGltf::Accessor::Type::VEC3;
             transAcc.count = static_cast<int64_t>(instances.size());
+            
+            // Compute min/max for translation
+            glm::vec3 minV(std::numeric_limits<float>::max());
+            glm::vec3 maxV(std::numeric_limits<float>::lowest());
+            for (size_t i = 0; i < translationData.size(); i += 3) {
+                float x = translationData[i];
+                float y = translationData[i+1];
+                float z = translationData[i+2];
+                if (x < minV.x) minV.x = x; if (y < minV.y) minV.y = y; if (z < minV.z) minV.z = z;
+                if (x > maxV.x) maxV.x = x; if (y > maxV.y) maxV.y = y; if (z > maxV.z) maxV.z = z;
+            }
+            transAcc.min = { (double)minV.x, (double)minV.y, (double)minV.z };
+            transAcc.max = { (double)maxV.x, (double)maxV.y, (double)maxV.z };
+
             translationAccessorIndex = static_cast<int32_t>(_outputGltf.accessors.size() - 1);
         }
         if (!rotationData.empty()) {
@@ -374,6 +388,7 @@ namespace GltfInstancing {
             rotAcc.componentType = CesiumGltf::Accessor::ComponentType::FLOAT;
             rotAcc.type = CesiumGltf::Accessor::Type::VEC4;
             rotAcc.count = static_cast<int64_t>(instances.size());
+            // Rotation usually doesn't need min/max but valid to have
             rotationAccessorIndex = static_cast<int32_t>(_outputGltf.accessors.size() - 1);
         }
         if (!scaleData.empty()) {
@@ -384,6 +399,20 @@ namespace GltfInstancing {
             scaleAcc.componentType = CesiumGltf::Accessor::ComponentType::FLOAT;
             scaleAcc.type = CesiumGltf::Accessor::Type::VEC3;
             scaleAcc.count = static_cast<int64_t>(instances.size());
+            
+            // Compute min/max for scale
+            glm::vec3 minV(std::numeric_limits<float>::max());
+            glm::vec3 maxV(std::numeric_limits<float>::lowest());
+            for (size_t i = 0; i < scaleData.size(); i += 3) {
+                float x = scaleData[i];
+                float y = scaleData[i+1];
+                float z = scaleData[i+2];
+                if (x < minV.x) minV.x = x; if (y < minV.y) minV.y = y; if (z < minV.z) minV.z = z;
+                if (x > maxV.x) maxV.x = x; if (y > maxV.y) maxV.y = y; if (z > maxV.z) maxV.z = z;
+            }
+            scaleAcc.min = { (double)minV.x, (double)minV.y, (double)minV.z };
+            scaleAcc.max = { (double)maxV.x, (double)maxV.y, (double)maxV.z };
+
             scaleAccessorIndex = static_cast<int32_t>(_outputGltf.accessors.size() - 1);
         }
     }
@@ -488,15 +517,18 @@ namespace GltfInstancing {
             CesiumGltf::Scene& scene = _outputGltf.scenes.emplace_back();
             scene.nodes = rootNodeIndices;
             _outputGltf.scene = static_cast<int32_t>(_outputGltf.scenes.size() - 1);
+        } else {
+            logMessage("No nodes to write in GLB. Skipping file generation.");
+            return std::nullopt;
         }
 
         if (!_outputGltf.buffers.empty()) {
             _outputGltf.buffers[0].byteLength = static_cast<int64_t>(_outputBufferData.size());
         }
 
-        CesiumGltfContent::GltfUtilities::removeUnusedAccessors(_outputGltf);
-        CesiumGltfContent::GltfUtilities::removeUnusedBufferViews(_outputGltf);
-        CesiumGltfContent::GltfUtilities::removeUnusedBuffers(_outputGltf);
+        // CesiumGltfContent::GltfUtilities::removeUnusedAccessors(_outputGltf);
+        // CesiumGltfContent::GltfUtilities::removeUnusedBufferViews(_outputGltf);
+        // CesiumGltfContent::GltfUtilities::removeUnusedBuffers(_outputGltf);
 
         CesiumGltfWriter::GltfWriterOptions writerOptions;
         CesiumGltfWriter::GltfWriterResult writerResult = _gltfWriter.writeGlb(_outputGltf, _outputBufferData, writerOptions);
@@ -549,15 +581,23 @@ namespace GltfInstancing {
             CesiumGltf::Scene& scene = _outputGltf.scenes.emplace_back();
             scene.nodes = rootNodeIndices;
             _outputGltf.scene = static_cast<int32_t>(_outputGltf.scenes.size() - 1);
+        } else {
+            logMessage("No instanced meshes to write. Skipping GLB generation.");
+            return std::nullopt;
+        }
+
+        if (_outputBufferData.empty()) {
+             logMessage("Warning: Output buffer is empty despite having nodes. Skipping GLB generation.");
+             return std::nullopt;
         }
 
         if (!_outputGltf.buffers.empty()) {
             _outputGltf.buffers[0].byteLength = static_cast<int64_t>(_outputBufferData.size());
         }
 
-        CesiumGltfContent::GltfUtilities::removeUnusedAccessors(_outputGltf);
-        CesiumGltfContent::GltfUtilities::removeUnusedBufferViews(_outputGltf);
-        CesiumGltfContent::GltfUtilities::removeUnusedBuffers(_outputGltf);
+        // CesiumGltfContent::GltfUtilities::removeUnusedAccessors(_outputGltf);
+        // CesiumGltfContent::GltfUtilities::removeUnusedBufferViews(_outputGltf);
+        // CesiumGltfContent::GltfUtilities::removeUnusedBuffers(_outputGltf);
 
         CesiumGltfWriter::GltfWriterOptions writerOptions;
         CesiumGltfWriter::GltfWriterResult writerResult = _gltfWriter.writeGlb(_outputGltf, _outputBufferData, writerOptions);
@@ -606,15 +646,23 @@ namespace GltfInstancing {
             CesiumGltf::Scene& scene = _outputGltf.scenes.emplace_back();
             scene.nodes = rootNodeIndices;
             _outputGltf.scene = static_cast<int32_t>(_outputGltf.scenes.size() - 1);
+        } else {
+            logMessage("No non-instanced meshes to write. Skipping GLB generation.");
+            return std::nullopt;
+        }
+
+        if (_outputBufferData.empty()) {
+             logMessage("Warning: Output buffer is empty despite having nodes. Skipping GLB generation.");
+             return std::nullopt;
         }
 
         if (!_outputGltf.buffers.empty()) {
             _outputGltf.buffers[0].byteLength = static_cast<int64_t>(_outputBufferData.size());
         }
 
-        CesiumGltfContent::GltfUtilities::removeUnusedAccessors(_outputGltf);
-        CesiumGltfContent::GltfUtilities::removeUnusedBufferViews(_outputGltf);
-        CesiumGltfContent::GltfUtilities::removeUnusedBuffers(_outputGltf);
+        // CesiumGltfContent::GltfUtilities::removeUnusedAccessors(_outputGltf);
+        // CesiumGltfContent::GltfUtilities::removeUnusedBufferViews(_outputGltf);
+        // CesiumGltfContent::GltfUtilities::removeUnusedBuffers(_outputGltf);
 
         CesiumGltfWriter::GltfWriterOptions writerOptions;
         CesiumGltfWriter::GltfWriterResult writerResult = _gltfWriter.writeGlb(_outputGltf, _outputBufferData, writerOptions);
@@ -688,15 +736,23 @@ namespace GltfInstancing {
             CesiumGltf::Scene& scene = _outputGltf.scenes.emplace_back();
             scene.nodes = rootNodeIndices;
             _outputGltf.scene = static_cast<int32_t>(_outputGltf.scenes.size() - 1);
+        } else {
+            logMessage("No LOD nodes to write. Skipping GLB generation.");
+            return std::nullopt;
+        }
+
+        if (_outputBufferData.empty()) {
+             logMessage("Warning: Output buffer is empty despite having nodes. Skipping GLB generation.");
+             return std::nullopt;
         }
 
         if (!_outputGltf.buffers.empty()) {
             _outputGltf.buffers[0].byteLength = static_cast<int64_t>(_outputBufferData.size());
         }
 
-        CesiumGltfContent::GltfUtilities::removeUnusedAccessors(_outputGltf);
-        CesiumGltfContent::GltfUtilities::removeUnusedBufferViews(_outputGltf);
-        CesiumGltfContent::GltfUtilities::removeUnusedBuffers(_outputGltf);
+        // CesiumGltfContent::GltfUtilities::removeUnusedAccessors(_outputGltf);
+        // CesiumGltfContent::GltfUtilities::removeUnusedBufferViews(_outputGltf);
+        // CesiumGltfContent::GltfUtilities::removeUnusedBuffers(_outputGltf);
 
         CesiumGltfWriter::GltfWriterOptions writerOptions;
         CesiumGltfWriter::GltfWriterResult writerResult = _gltfWriter.writeGlb(_outputGltf, _outputBufferData, writerOptions);

@@ -74,6 +74,15 @@ namespace GltfInstancing {
             const std::filesystem::path& tilesetOutputPath
         );
 
+        // 新增：生成一个符合 3D Tiles 1.1 标准的 Wrapper Tileset
+        // 利用 'contents' 数组特性，将多个 GLB 内容聚合在同一个 Tile 节点中。
+        // 这允许在同一层级同时加载和显示实例与非实例模型。
+        bool writeWrapperTileset(
+            const std::vector<std::filesystem::path>& contentFiles,
+            const std::filesystem::path& wrapperTilesetPath,
+            double geometricError = 0.0
+        );
+
     private:
         //Cesium3DTilesWriter::TilesetWriter _writer;
     };

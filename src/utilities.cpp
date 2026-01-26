@@ -524,7 +524,7 @@ namespace GltfInstancing {
     std::array<double, 12> BoundingBox::toTilesetBoundingVolumeBox() const {
         if (!isValid()) {
             // Return a zero bounding box or handle error
-            return { 0,0,0, 0,0,0, 0,0,0, 0,0,0 };
+            return { 0,0,0, 0,0,0, 0,1,0, 0,0,1 }; // Fixed valid zero box with minimal extent
         }
         glm::dvec3 center = (min + max) * 0.5;
         glm::dvec3 halfExtents = (max - min) * 0.5;
@@ -628,5 +628,5 @@ namespace GltfInstancing {
 
         return true;
     }
-
 } // namespace GltfInstancing
+// Refreshed to fix caching

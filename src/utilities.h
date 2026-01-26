@@ -139,5 +139,5 @@ namespace GltfInstancing {
     bool areBoundingBoxesSimilar(const BoundingBox& bb1, const BoundingBox& bb2, double tolerance);
 
 } // namespace GltfInstancing
-
 #endif // UTILITIES_H
+// Refreshed to fix caching

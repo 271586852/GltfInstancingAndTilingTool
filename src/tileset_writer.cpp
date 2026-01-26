@@ -383,4 +383,57 @@ namespace GltfInstancing {
         return exportTilesetToJson(tileset, tilesetOutputPath);
     }
 
+    bool TilesetWriter::writeWrapperTileset(
+        const std::vector<std::filesystem::path>& contentFiles,
+        const std::filesystem::path& wrapperTilesetPath,
+        double geometricError
+    ) {
+        if (contentFiles.empty()) return false;
+
+        // Use nlohmann::json to manually construct a 3D Tiles 1.1 compatible tileset
+        // This utilizes the 'contents' array for multiple contents in a single tile.
+        nlohmann::json tilesetJson;
+        tilesetJson["asset"]["version"] = "1.1";
+        tilesetJson["geometricError"] = geometricError;
+
+        nlohmann::json rootJson;
+        rootJson["geometricError"] = geometricError;
+        rootJson["refine"] = "ADD"; // 1.1 standard allows ADD/REPLACE. For merging contents, REPLACE is fine if they are the only thing.
+        // Actually, if we use 'contents', these contents are displayed together. 
+        // Refine strategy applies to children. Since this is a leaf node (wrapper), refine doesn't matter much unless we add children later.
+        
+        // Bounding Volume
+        // Simplified huge box. Ideally this should be the union of all contents' bounding volumes.
+        rootJson["boundingVolume"]["box"] = {0,0,0, 100000,0,0, 0,100000,0, 0,0,100000}; 
+
+        // Transform (Same as standard tileset)
+        rootJson["transform"] = { 
+            -0.9023136427, 0.4310860309, 0.0, 0.0, 
+             0.3731804153, 0.7899661139, 0.4899996041, 0.0, 
+             0.2117562093, 0.4431713488, -0.8716388481, 0.0, 
+            -2418525.0442296155, 5374967.3619212005, 2429440.0912170662, 1.0 
+        };
+
+        // 3D Tiles 1.1: Use 'contents' array
+        rootJson["contents"] = nlohmann::json::array();
+        for (const auto& file : contentFiles) {
+            nlohmann::json contentJson;
+            contentJson["uri"] = file.filename().string();
+            // In 1.1, metadata can be added to content here if needed
+            rootJson["contents"].push_back(contentJson);
+        }
+
+        tilesetJson["root"] = rootJson;
+
+        std::ofstream outFile(wrapperTilesetPath);
+        if (!outFile.is_open()) {
+            GltfInstancing::logError("Failed to write wrapper tileset to: " + wrapperTilesetPath.string());
+            return false;
+        }
+        outFile << tilesetJson.dump(4); // Pretty print with 4 spaces
+        outFile.close();
+        
+        return true;
+    }
+
 } // namespace GltfInstancing

@@ -48,6 +48,7 @@ struct ToolConfiguration {
     int nonInstancedLodLevelCount = 3;
     double nonInstancedLodRatio = 0.5;
     size_t nonInstancedMinSimplifyIndexCount = 300; // Skip tiny meshes (100 triangles)
+    bool enableNonInstancedLodInstancing = false; // Enable secondary instancing check for LOD models
 
     // Flags to track if a parameter was set
     bool inputDirectorySet = false;
@@ -213,6 +214,10 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 try { config.nonInstancedLodRatio = std::stod(value); } catch(...) {}
             } else if (key == "non_instanced_min_simplify_index_count") {
                 try { config.nonInstancedMinSimplifyIndexCount = static_cast<size_t>(std::stoll(value)); } catch(...) {}
+            } else if (key == "enable_non_instanced_lod_instancing") {
+                std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+                if (value == "true" || value == "1" || value == "yes") config.enableNonInstancedLodInstancing = true;
+                else config.enableNonInstancedLodInstancing = false;
             }
             else {
                 GltfInstancing::logWarning("Unknown configuration key in config file (line " + std::to_string(lineNumber) + "): " + key);
@@ -887,18 +892,146 @@ int main(int argc, char* argv[]) {
         tilesetWriter.writeTileset(nonInstancedUris, nonInstancedTilesetPath, rootGeometricError);
     }
 
-    // --- Non-Instanced LOD Generation ---
+    // --- Non-Instanced LOD Generation with Post-LOD Instancing ---
     if (config.enableNonInstancedLodGeneration && nonInstancedWriteResult) {
-         GltfInstancing::logInfo("Generating LODs for non-instanced meshes...");
+         GltfInstancing::logInfo("Generating LODs for non-instanced meshes with post-process instancing...");
          std::filesystem::path lodOutputDir = std::filesystem::path(config.outputDirectory) / "non_instancing_lod_output";
-         NonInstancingLOD::NonInstancingLODManager::generateNonInstancingLodChain(
+         
+         // 1. Generate Raw LOD Files (Geometry Simplification only)
+         auto lodLevels = NonInstancingLOD::NonInstancingLODManager::generateLODFilesOnly(
              nonInstancedWriteResult->first,
              lodOutputDir,
              config.nonInstancedLodLevelCount,
              (float)config.nonInstancedLodRatio,
-             config.nonInstancedMinSimplifyIndexCount,
-             "tileset.json"
+             config.nonInstancedMinSimplifyIndexCount
          );
+
+         if (!lodLevels.empty()) {
+             // -------------------------------------------------------
+             // 1. Always generate Standard Tileset (Base functionality)
+             // -------------------------------------------------------
+             GltfInstancing::logInfo("Organizing generated LOD files into standard tileset...");
+             
+             GltfInstancing::TilesetNode standardRoot;
+             GltfInstancing::TilesetNode* stdCurrent = &standardRoot;
+             
+             // Reverse iterate (Coarsest -> Finest)
+             for (int i = lodLevels.size() - 1; i >= 0; --i) {
+                 GltfInstancing::TilesetNode node;
+                 node.contentUri = lodLevels[i].filePath.filename().string();
+                 
+                 double error = lodLevels[i].geometricError;
+                 if (i == lodLevels.size() - 1) error = 1000.0; // Root error
+
+                 node.geometricError = error;
+                 node.boundingVolume = { glm::dvec3(-10000), glm::dvec3(10000) }; 
+                 
+                 if (i == lodLevels.size() - 1) {
+                     standardRoot = node;
+                     stdCurrent = &standardRoot;
+                 } else {
+                     stdCurrent->children.push_back(node);
+                     stdCurrent = &stdCurrent->children.back();
+                 }
+             }
+
+             std::filesystem::path standardTilesetPath = lodOutputDir / "tileset.json";
+             tilesetWriter.writeHierarchicalTileset(standardRoot, standardTilesetPath);
+             GltfInstancing::logInfo("Standard Non-Instanced LOD tileset generated at: " + standardTilesetPath.string());
+
+             // -------------------------------------------------------
+             // 2. Optional: Post-process Instancing (Advanced feature)
+             // -------------------------------------------------------
+             if (config.enableNonInstancedLodInstancing) {
+                 GltfInstancing::logInfo("Applying instancing detection to generated LOD levels (Outputting to subfolder)...");
+                 
+                 // Create sub-directory for instanced results
+                 std::filesystem::path instancedOutputDir = lodOutputDir / "instanced_lods";
+                 std::filesystem::create_directories(instancedOutputDir);
+
+                 std::vector<GltfInstancing::TilesetNode> finalNodes;
+                 GltfInstancing::GlbReader lodReader;
+                 
+                 GltfInstancing::InstancingDetector lodDetector(config.geometryTolerance, config.attributesToSkipDataHash, config.normalTolerance, config.instanceLimit);
+
+                 for (const auto& levelInfo : lodLevels) {
+                     GltfInstancing::logInfo("Processing Level " + std::to_string(levelInfo.level) + " for instancing...");
+                     
+                     std::set<std::filesystem::path> fileSet = { levelInfo.filePath };
+                     auto lodModels = lodReader.loadGltfModels(fileSet);
+                     if (lodModels.empty()) continue;
+
+                     auto lodDetectionResult = lodDetector.detect(lodModels);
+                     
+                     std::string baseName = levelInfo.filePath.stem().string();
+                     // Output to subfolder
+                     std::filesystem::path instancedPath = instancedOutputDir / (baseName + "_instanced.glb");
+                     std::filesystem::path uniquePath = instancedOutputDir / (baseName + "_unique.glb");
+                     
+                     auto writeInst = glbWriter.writeInstancedMeshesOnly(lodModels, lodDetectionResult, instancedPath);
+                     auto writeUniq = glbWriter.writeNonInstancedMeshesOnly(lodModels, lodDetectionResult, uniquePath);
+
+                     std::vector<std::filesystem::path> levelContents;
+                     GltfInstancing::BoundingBox combinedBBox;
+
+                     if (writeInst && writeInst->second.isValid()) {
+                         levelContents.push_back(instancedPath);
+                         combinedBBox.merge(writeInst->second);
+                     }
+                     if (writeUniq && writeUniq->second.isValid()) {
+                         levelContents.push_back(uniquePath);
+                         combinedBBox.merge(writeUniq->second);
+                     }
+
+                     std::string finalUri;
+                     
+                     if (levelContents.empty()) {
+                         GltfInstancing::logWarning("Level " + std::to_string(levelInfo.level) + " produced no content during instancing.");
+                         continue;
+                     } else if (levelContents.size() == 1) {
+                         finalUri = levelContents[0].filename().string();
+                     } else {
+                         std::string wrapperName = baseName + "_wrapper.json";
+                         std::filesystem::path wrapperPath = instancedOutputDir / wrapperName;
+                         
+                         if (tilesetWriter.writeWrapperTileset(levelContents, wrapperPath, levelInfo.geometricError)) {
+                             finalUri = wrapperName;
+                         } else {
+                             GltfInstancing::logError("Failed to write wrapper tileset for " + baseName);
+                             finalUri = levelContents[0].filename().string();
+                         }
+                     }
+
+                     GltfInstancing::TilesetNode node;
+                     node.contentUri = finalUri;
+                     node.geometricError = levelInfo.geometricError;
+                     node.boundingVolume = combinedBBox;
+                     finalNodes.push_back(node);
+                 }
+
+                 if (!finalNodes.empty()) {
+                     GltfInstancing::TilesetNode rootNode;
+                     GltfInstancing::TilesetNode* current = &rootNode;
+                     
+                     for (int i = finalNodes.size() - 1; i >= 0; --i) {
+                         auto& srcNode = finalNodes[i];
+                         if (i == finalNodes.size() - 1 && srcNode.geometricError < 100.0) srcNode.geometricError = 1000.0; 
+
+                         if (i == finalNodes.size() - 1) {
+                             rootNode = srcNode;
+                             current = &rootNode;
+                         } else {
+                             current->children.push_back(srcNode);
+                             current = &current->children.back();
+                         }
+                     }
+
+                     std::filesystem::path finalTilesetPath = instancedOutputDir / "tileset.json";
+                     tilesetWriter.writeHierarchicalTileset(rootNode, finalTilesetPath);
+                     GltfInstancing::logInfo("Advanced Instanced-LOD tileset generated at: " + finalTilesetPath.string());
+                 }
+             }
+         }
     }
     
     // Stage 2: Mesh Segmentation

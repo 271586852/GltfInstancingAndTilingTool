@@ -21,57 +21,54 @@ namespace NonInstancingLOD {
         double fileSizeMB;
     };
 
-    void NonInstancingLODManager::generateNonInstancingLodChain(
+    std::vector<NonInstancingLODManager::GeneratedLodLevel> NonInstancingLODManager::generateLODFilesOnly(
         const std::filesystem::path& inputPath,
         const std::filesystem::path& outputDir,
         int levels,
         float ratio,
-        size_t minSimplifyIndexCount,
-        const std::string& tilesetName
+        size_t minSimplifyIndexCount
     ) {
+        std::vector<GeneratedLodLevel> generatedLevels;
+        std::vector<LodStats> allStats;
+
         if (!std::filesystem::exists(inputPath)) {
-        GltfInstancing::logError("NonInstancingLODManager: Input file does not exist: " + inputPath.string());
-            return;
+            GltfInstancing::logError("NonInstancingLODManager: Input file does not exist: " + inputPath.string());
+            return generatedLevels;
         }
 
         std::filesystem::create_directories(outputDir);
-
-        std::vector<LodStats> allStats;
 
         // Load original model
         std::vector<std::byte> data;
         std::ifstream file(inputPath, std::ios::binary | std::ios::ate);
         if (!file) {
             GltfInstancing::logError("NonInstancingLODManager: Failed to open file: " + inputPath.string());
-            return;
+            return generatedLevels;
         }
         std::streamsize size = file.tellg();
         file.seekg(0, std::ios::beg);
         data.resize(size);
         if (!file.read(reinterpret_cast<char*>(data.data()), size)) {
              GltfInstancing::logError("NonInstancingLODManager: Failed to read file: " + inputPath.string());
-             return;
+             return generatedLevels;
         }
         
         CesiumGltfReader::GltfReader reader;
         auto modelResult = reader.readGltf(gsl::span<const std::byte>(data));
         if (!modelResult.model) {
             GltfInstancing::logError("NonInstancingLODManager: Failed to parse GLB: " + inputPath.string());
-            return;
+            return generatedLevels;
         }
 
         CesiumGltf::Model currentModel = std::move(*modelResult.model);
         
-        // Prepare list of LOD filenames and errors for tileset
-        std::vector<std::string> lodFilenames;
         // LOD0 is the original
         std::string lod0Name = "non_instanced_LOD0.glb";
         std::filesystem::path lod0Path = outputDir / lod0Name;
         
-        // Copy original to LOD0
         try {
             std::filesystem::copy_file(inputPath, lod0Path, std::filesystem::copy_options::overwrite_existing);
-            lodFilenames.push_back(lod0Name);
+            generatedLevels.push_back({0, lod0Path, 0.0});
 
             // Calculate LOD0 stats
             LodStats lod0Stats;
@@ -95,7 +92,7 @@ namespace NonInstancingLOD {
 
         } catch (const std::exception& e) {
             GltfInstancing::logError("NonInstancingLODManager: Failed to copy LOD0: " + std::string(e.what()));
-            return;
+            return generatedLevels;
         }
 
         float currentRatio = ratio;
@@ -122,18 +119,20 @@ namespace NonInstancingLOD {
             CesiumGltfWriter::GltfWriterResult writerResult = writer.writeGlb(simplified, bufferSpan, writerOptions);
             if (writerResult.gltfBytes.empty()) {
                 GltfInstancing::logError("NonInstancingLODManager: Failed to write GLB: " + lodPath.string());
-                return;
+                return generatedLevels;
             }
 
             std::ofstream outFile(lodPath, std::ios::binary);
             if (!outFile) {
                 GltfInstancing::logError("NonInstancingLODManager: Failed to open output file: " + lodPath.string());
-                return;
+                return generatedLevels;
             }
             outFile.write(reinterpret_cast<const char*>(writerResult.gltfBytes.data()), writerResult.gltfBytes.size());
             outFile.close();
             
-            lodFilenames.push_back(lodName);
+            // Calculate error (heuristic)
+            double error = 16.0 * std::pow(2.0, i - 1); 
+            generatedLevels.push_back({i, lodPath, error});
 
             // Calculate LOD stats
             LodStats stats;
@@ -180,24 +179,40 @@ namespace NonInstancingLOD {
         } else {
              GltfInstancing::logError("Failed to write non-instanced LOD report to: " + reportPath.string());
         }
+        
+        return generatedLevels;
+    }
 
-        // Generate Tileset
-        if (lodFilenames.empty()) return;
+    void NonInstancingLODManager::generateNonInstancingLodChain(
+        const std::filesystem::path& inputPath,
+        const std::filesystem::path& outputDir,
+        int levels,
+        float ratio,
+        size_t minSimplifyIndexCount,
+        const std::string& tilesetName
+    ) {
+        // Reuse the new function
+        auto generatedLevels = generateLODFilesOnly(inputPath, outputDir, levels, ratio, minSimplifyIndexCount);
+        if (generatedLevels.empty()) return;
 
+        // Generate Tileset (Old logic adapted)
         GltfInstancing::TilesetNode rootNode;
         GltfInstancing::TilesetNode* current = &rootNode;
         
-        for (int i = lodFilenames.size() - 1; i >= 0; --i) {
+        // Reverse iterate to build hierarchy: Coarsest (Last) -> Finest (First)
+        // levels returned are [0, 1, 2...]. 
+        for (int i = generatedLevels.size() - 1; i >= 0; --i) {
             GltfInstancing::TilesetNode node;
-            node.contentUri = lodFilenames[i];
+            node.contentUri = generatedLevels[i].filePath.filename().string();
             
-            double error = (i == 0) ? 0.0 : 16.0 * std::pow(2.0, i - 1); 
-            if (i == lodFilenames.size() - 1) error = 1000.0;
+            double error = generatedLevels[i].geometricError;
+            // Root (coarsest) needs high error
+            if (i == generatedLevels.size() - 1) error = 1000.0;
 
             node.geometricError = error;
             node.boundingVolume = { glm::dvec3(-10000), glm::dvec3(10000) }; 
             
-            if (i == lodFilenames.size() - 1) {
+            if (i == generatedLevels.size() - 1) {
                 rootNode = node;
                 current = &rootNode;
             } else {
@@ -212,6 +227,7 @@ namespace NonInstancingLOD {
         tilesetWriter.writeHierarchicalTileset(rootNode, tilesetPath);
         GltfInstancing::logInfo("Non-Instanced LOD chain generated at: " + outputDir.string());
     }
+
 
     CesiumGltf::Model NonInstancingLODManager::simplifyModel(
         const CesiumGltf::Model& source,

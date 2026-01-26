@@ -28,6 +28,24 @@ namespace NonInstancingLOD {
             const std::string& tilesetName = "tileset_lod.json"
         );
 
+        struct GeneratedLodLevel {
+            int level;
+            std::filesystem::path filePath;
+            double geometricError;
+        };
+
+        /**
+         * @brief Generates LOD files only and returns their paths/info.
+         * Does not generate a tileset.
+         */
+        static std::vector<GeneratedLodLevel> generateLODFilesOnly(
+            const std::filesystem::path& inputPath,
+            const std::filesystem::path& outputDir,
+            int levels,
+            float ratio,
+            size_t minSimplifyIndexCount
+        );
+
     private:
         /**
          * @brief Creates a simplified version of the model.
