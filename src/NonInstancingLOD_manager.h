@@ -46,7 +46,7 @@ namespace NonInstancingLOD {
             size_t minSimplifyIndexCount
         );
 
-    private:
+    public: // Changed to public for QuadtreePipeline usage
         /**
          * @brief Creates a simplified version of the model.
          * 

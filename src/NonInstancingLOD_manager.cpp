@@ -260,18 +260,47 @@ namespace NonInstancingLOD {
 
                 // --- 1. Gather Data ---
                 const CesiumGltf::Accessor& posAcc = source.accessors[posIt->second];
+                if (posAcc.bufferView < 0 || posAcc.bufferView >= static_cast<int32_t>(source.bufferViews.size())) continue;
+                
                 const CesiumGltf::BufferView& posView = source.bufferViews[posAcc.bufferView];
+                if (posView.buffer < 0 || posView.buffer >= static_cast<int32_t>(source.buffers.size())) continue;
+                
                 const CesiumGltf::Buffer& posBuf = source.buffers[posView.buffer];
+                if (posView.byteOffset + posAcc.byteOffset + posAcc.count * 12 > posBuf.cesium.data.size()) { // Approx check (assuming minimal stride)
+                     // Log warning?
+                     continue;
+                }
+
                 const std::byte* posDataPtr = posBuf.cesium.data.data() + posView.byteOffset + posAcc.byteOffset;
                 size_t vertexCount = posAcc.count;
                 // Assume vec3 float
 
                 std::vector<uint32_t> indices;
                 if (primitive.indices >= 0) {
+                    if (primitive.indices >= static_cast<int32_t>(source.accessors.size())) continue;
                     const CesiumGltf::Accessor& idxAcc = source.accessors[primitive.indices];
+                    if (idxAcc.bufferView < 0 || idxAcc.bufferView >= static_cast<int32_t>(source.bufferViews.size())) continue;
+                    
                     const CesiumGltf::BufferView& idxView = source.bufferViews[idxAcc.bufferView];
+                    if (idxView.buffer < 0 || idxView.buffer >= static_cast<int32_t>(source.buffers.size())) continue;
+                    
                     const CesiumGltf::Buffer& idxBuf = source.buffers[idxView.buffer];
-                    const std::byte* idxData = idxBuf.cesium.data.data() + idxView.byteOffset + idxAcc.byteOffset;
+                    
+                    // Safety Check for Buffer Bounds
+                    size_t elementSize = 0;
+                    if (idxAcc.componentType == CesiumGltf::Accessor::ComponentType::UNSIGNED_INT) elementSize = 4;
+                    else if (idxAcc.componentType == CesiumGltf::Accessor::ComponentType::UNSIGNED_SHORT) elementSize = 2;
+                    else if (idxAcc.componentType == CesiumGltf::Accessor::ComponentType::UNSIGNED_BYTE) elementSize = 1;
+                    
+                    size_t requiredBytes = idxAcc.count * elementSize;
+                    size_t startOffset = idxView.byteOffset + idxAcc.byteOffset;
+                    
+                    if (startOffset + requiredBytes > idxBuf.cesium.data.size()) {
+                        // Buffer underflow/corruption detected
+                        continue;
+                    }
+
+                    const std::byte* idxData = idxBuf.cesium.data.data() + startOffset;
 
                     indices.resize(idxAcc.count);
                     if (idxAcc.componentType == CesiumGltf::Accessor::ComponentType::UNSIGNED_INT) {

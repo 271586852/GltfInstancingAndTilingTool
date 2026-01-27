@@ -4,11 +4,15 @@
 #include "utilities.h"
 #include "tileset_writer.h"
 #include "ToolConfiguration.h" 
+#include "NonInstancingLOD_manager.h" 
+#include "instancing_detector.h"      
+
 #include <iostream>
 #include <fstream>
 #include <algorithm>
-#include <cstdint> // Fixed: Added for int32_t, uint16_t
-#include <cstring> // Fixed: Added for memcpy
+#include <cstdint> 
+#include <cstring> 
+#include <iomanip> // For std::setprecision
 #include <glm/gtc/matrix_transform.hpp>
 #include <CesiumGltf/ExtensionExtMeshGpuInstancing.h>
 #include <CesiumGltfReader/GltfReader.h>
@@ -16,29 +20,248 @@
 
 namespace QuadtreePipeline {
 
-    // Helper to get AABB from Model
+    // Helper: Unpack EXT_mesh_gpu_instancing into real nodes
+    // This allows subsequent simplification to work on geometry without losing instance transforms
+    void unpackInstancing(CesiumGltf::Model& model) {
+        std::vector<CesiumGltf::Node> newNodes;
+        bool hasChanges = false;
+
+        for (const auto& node : model.nodes) {
+            auto it = node.extensions.find("EXT_mesh_gpu_instancing");
+            if (it == node.extensions.end()) {
+                newNodes.push_back(node);
+                continue;
+            }
+
+            hasChanges = true;
+            const auto& ext = std::any_cast<const CesiumGltf::ExtensionExtMeshGpuInstancing&>(it->second);
+            
+            int32_t tAccIdx = -1;
+            int32_t rAccIdx = -1;
+            int32_t sAccIdx = -1;
+
+            if (auto attr = ext.attributes.find("TRANSLATION"); attr != ext.attributes.end()) tAccIdx = attr->second;
+            if (auto attr = ext.attributes.find("ROTATION"); attr != ext.attributes.end()) rAccIdx = attr->second;
+            if (auto attr = ext.attributes.find("SCALE"); attr != ext.attributes.end()) sAccIdx = attr->second;
+
+            size_t count = 0;
+            if (tAccIdx >= 0) count = model.accessors[tAccIdx].count;
+            else if (rAccIdx >= 0) count = model.accessors[rAccIdx].count;
+            else if (sAccIdx >= 0) count = model.accessors[sAccIdx].count;
+
+            if (count == 0) {
+                // Empty instancing, just drop or keep node without extension?
+                // Keep node as is but remove extension to avoid issues? 
+                // For now, if count is 0, just ignore.
+                continue; 
+            }
+
+            for (size_t i = 0; i < count; ++i) {
+                CesiumGltf::Node instanceNode;
+                instanceNode.mesh = node.mesh; // Point to same prototype mesh
+                
+                // Copy base transform from original node (if any)
+                // Note: Instancing spec says T/R/S in extension *replaces* node transform? 
+                // Or is applied on top? Spec: "The instanced node's transform properties (matrix, translation, rotation, scale) are ignored."
+                // So we don't copy node.matrix/translation/etc.
+                
+                // Read Translation
+                if (tAccIdx >= 0) {
+                    const auto& acc = model.accessors[tAccIdx];
+                    const auto& bv = model.bufferViews[acc.bufferView];
+                    const auto& buf = model.buffers[bv.buffer];
+                    size_t stride = (bv.byteStride && *bv.byteStride > 0) ? static_cast<size_t>(*bv.byteStride) : 12; // 3 * float
+                    size_t offset = bv.byteOffset + acc.byteOffset + i * stride;
+                    const float* ptr = reinterpret_cast<const float*>(buf.cesium.data.data() + offset);
+                    instanceNode.translation = { ptr[0], ptr[1], ptr[2] };
+                }
+
+                // Read Rotation
+                if (rAccIdx >= 0) {
+                    const auto& acc = model.accessors[rAccIdx];
+                    const auto& bv = model.bufferViews[acc.bufferView];
+                    const auto& buf = model.buffers[bv.buffer];
+                    size_t stride = (bv.byteStride && *bv.byteStride > 0) ? static_cast<size_t>(*bv.byteStride) : 16; // 4 * float (xyzw)
+                    size_t offset = bv.byteOffset + acc.byteOffset + i * stride;
+                    // GLTF Rotation is Vec4 (x, y, z, w) - CesiumGltf::Node::rotation is vector<double>
+                    const float* ptr = reinterpret_cast<const float*>(buf.cesium.data.data() + offset);
+                    instanceNode.rotation = { ptr[0], ptr[1], ptr[2], ptr[3] };
+                }
+
+                // Read Scale
+                if (sAccIdx >= 0) {
+                    const auto& acc = model.accessors[sAccIdx];
+                    const auto& bv = model.bufferViews[acc.bufferView];
+                    const auto& buf = model.buffers[bv.buffer];
+                    size_t stride = (bv.byteStride && *bv.byteStride > 0) ? static_cast<size_t>(*bv.byteStride) : 12; // 3 * float
+                    size_t offset = bv.byteOffset + acc.byteOffset + i * stride;
+                    const float* ptr = reinterpret_cast<const float*>(buf.cesium.data.data() + offset);
+                    instanceNode.scale = { ptr[0], ptr[1], ptr[2] };
+                }
+                
+                newNodes.push_back(std::move(instanceNode));
+            }
+        }
+
+        if (hasChanges) {
+            model.nodes = std::move(newNodes);
+            // Since we flattened the nodes list, we need to ensure the scene references them.
+            // Our pipeline mostly assumes flat scenes for tiles. 
+            // Rebuild scene.nodes
+            if (!model.scenes.empty()) {
+                model.scenes[0].nodes.clear();
+                for (size_t i = 0; i < model.nodes.size(); ++i) {
+                    model.scenes[0].nodes.push_back(static_cast<int32_t>(i));
+                }
+            }
+        }
+    }
+
+    // Helper: Merge a source Model into a destination Model, updating offsets
+    // Returns index offset for Meshes in the destination model
+    size_t mergeModel(CesiumGltf::Model& dest, const CesiumGltf::Model& src) {
+        // Ensure dest has at least one buffer
+        if (dest.buffers.empty()) {
+            dest.buffers.resize(1);
+        }
+        
+        CesiumGltf::Buffer& mainBuffer = dest.buffers[0];
+        size_t currentBufferEnd = mainBuffer.cesium.data.size();
+        
+        // Pad buffer to 4-byte alignment
+        size_t padding = (4 - (currentBufferEnd % 4)) % 4;
+        if (padding > 0) {
+            mainBuffer.cesium.data.insert(mainBuffer.cesium.data.end(), padding, std::byte(0));
+            currentBufferEnd += padding;
+        }
+
+        // We only support merging from buffer[0] of src if available
+        // Or we iterate all buffers in src and append them.
+        // For GLB, usually there is only one buffer.
+        
+        // Map from src buffer index to byte offset in dest main buffer
+        std::vector<size_t> srcBufferOffsets;
+        
+        for (const auto& srcBuf : src.buffers) {
+            size_t offset = mainBuffer.cesium.data.size();
+            // Pad to 4 bytes before appending
+            size_t pad = (4 - (offset % 4)) % 4;
+            if(pad > 0) {
+                mainBuffer.cesium.data.insert(mainBuffer.cesium.data.end(), pad, std::byte(0));
+                offset += pad;
+            }
+            
+            srcBufferOffsets.push_back(offset);
+            mainBuffer.cesium.data.insert(mainBuffer.cesium.data.end(), srcBuf.cesium.data.begin(), srcBuf.cesium.data.end());
+        }
+        
+        // Update main buffer byteLength
+        mainBuffer.byteLength = static_cast<int64_t>(mainBuffer.cesium.data.size());
+
+        size_t bufferViewOffset = dest.bufferViews.size();
+        size_t accessorOffset = dest.accessors.size();
+        size_t meshOffset = dest.meshes.size();
+        size_t materialOffset = dest.materials.size();
+        size_t textureOffset = dest.textures.size();
+        size_t imageOffset = dest.images.size();
+        size_t samplerOffset = dest.samplers.size();
+
+        // 2. BufferViews
+        for (auto bv : src.bufferViews) {
+            int32_t oldBufIdx = bv.buffer;
+            bv.buffer = 0; // Point to main buffer
+            if (oldBufIdx >= 0 && oldBufIdx < static_cast<int32_t>(srcBufferOffsets.size())) {
+                bv.byteOffset += static_cast<int64_t>(srcBufferOffsets[oldBufIdx]); // Add offset
+            }
+            dest.bufferViews.push_back(bv);
+        }
+
+        // 3. Accessors
+        for (auto acc : src.accessors) {
+            if (acc.bufferView >= 0) acc.bufferView += static_cast<int32_t>(bufferViewOffset);
+            dest.accessors.push_back(acc);
+        }
+
+        // 4. Images
+        for (auto img : src.images) {
+            if (img.bufferView >= 0) img.bufferView += static_cast<int32_t>(bufferViewOffset);
+            dest.images.push_back(img);
+        }
+
+        // 5. Samplers
+        for (const auto& smp : src.samplers) dest.samplers.push_back(smp);
+
+        // 6. Textures
+        for (auto tex : src.textures) {
+            if (tex.source >= 0) tex.source += static_cast<int32_t>(imageOffset);
+            if (tex.sampler >= 0) tex.sampler += static_cast<int32_t>(samplerOffset);
+            dest.textures.push_back(tex);
+        }
+
+        // 7. Materials
+        for (auto mat : src.materials) {
+            if (mat.pbrMetallicRoughness) {
+                if (mat.pbrMetallicRoughness->baseColorTexture) mat.pbrMetallicRoughness->baseColorTexture->index += static_cast<int32_t>(textureOffset);
+                if (mat.pbrMetallicRoughness->metallicRoughnessTexture) mat.pbrMetallicRoughness->metallicRoughnessTexture->index += static_cast<int32_t>(textureOffset);
+            }
+            if (mat.normalTexture) mat.normalTexture->index += static_cast<int32_t>(textureOffset);
+            if (mat.occlusionTexture) mat.occlusionTexture->index += static_cast<int32_t>(textureOffset);
+            if (mat.emissiveTexture) mat.emissiveTexture->index += static_cast<int32_t>(textureOffset);
+            dest.materials.push_back(mat);
+        }
+
+        // 8. Meshes
+        for (auto m : src.meshes) {
+            for (auto& prim : m.primitives) {
+                for (auto& attr : prim.attributes) {
+                    attr.second += static_cast<int32_t>(accessorOffset);
+                }
+                if (prim.indices >= 0) prim.indices += static_cast<int32_t>(accessorOffset);
+                if (prim.material >= 0) prim.material += static_cast<int32_t>(materialOffset);
+            }
+            dest.meshes.push_back(m);
+        }
+
+        // 9. Extensions Declarations
+        for (const auto& ext : src.extensionsUsed) {
+            if (std::find(dest.extensionsUsed.begin(), dest.extensionsUsed.end(), ext) == dest.extensionsUsed.end()) {
+                dest.extensionsUsed.push_back(ext);
+            }
+        }
+        for (const auto& ext : src.extensionsRequired) {
+            if (std::find(dest.extensionsRequired.begin(), dest.extensionsRequired.end(), ext) == dest.extensionsRequired.end()) {
+                dest.extensionsRequired.push_back(ext);
+            }
+        }
+
+        return meshOffset;
+    }
+
     void computeAABB(const CesiumGltf::Model& model, glm::vec3& minPt, glm::vec3& maxPt) {
         minPt = glm::vec3(std::numeric_limits<float>::max());
         maxPt = glm::vec3(std::numeric_limits<float>::lowest());
         
         bool found = false;
         for (const auto& node : model.nodes) {
-             if (node.mesh >= 0 && node.mesh < static_cast<std::int32_t>(model.meshes.size())) { // Fixed: cast
+             if (node.mesh >= 0 && node.mesh < static_cast<std::int32_t>(model.meshes.size())) {
                  const auto& mesh = model.meshes[node.mesh];
                  for (const auto& prim : mesh.primitives) {
                      auto it = prim.attributes.find("POSITION");
                      if (it != prim.attributes.end()) {
-                         const auto& accessor = model.accessors[it->second];
-                         const auto& min = accessor.min;
-                         const auto& max = accessor.max;
-                         if (min.size() >= 3 && max.size() >= 3) {
-                             minPt.x = glm::min(minPt.x, (float)min[0]);
-                             minPt.y = glm::min(minPt.y, (float)min[1]);
-                             minPt.z = glm::min(minPt.z, (float)min[2]);
-                             maxPt.x = glm::max(maxPt.x, (float)max[0]);
-                             maxPt.y = glm::max(maxPt.y, (float)max[1]);
-                             maxPt.z = glm::max(maxPt.z, (float)max[2]);
-                             found = true;
+                         int32_t accessorIdx = it->second;
+                         if (accessorIdx >= 0 && accessorIdx < static_cast<int32_t>(model.accessors.size())) {
+                             const auto& accessor = model.accessors[accessorIdx];
+                             const auto& min = accessor.min;
+                             const auto& max = accessor.max;
+                             if (min.size() >= 3 && max.size() >= 3) {
+                                 minPt.x = glm::min(minPt.x, (float)min[0]);
+                                 minPt.y = glm::min(minPt.y, (float)min[1]);
+                                 minPt.z = glm::min(minPt.z, (float)min[2]);
+                                 maxPt.x = glm::max(maxPt.x, (float)max[0]);
+                                 maxPt.y = glm::max(maxPt.y, (float)max[1]);
+                                 maxPt.z = glm::max(maxPt.z, (float)max[2]);
+                                 found = true;
+                             }
                          }
                      }
                  }
@@ -50,70 +273,7 @@ namespace QuadtreePipeline {
         }
     }
 
-
-    // Helper to create a unit cube mesh in the model
-    void createUnitCube(CesiumGltf::Model& model) {
-        // 1. Create Buffers
-        const std::vector<float> vertices = {
-            -0.5f, -0.5f,  0.5f, // 0
-             0.5f, -0.5f,  0.5f, // 1
-            -0.5f,  0.5f,  0.5f, // 2
-             0.5f,  0.5f,  0.5f, // 3
-            -0.5f, -0.5f, -0.5f, // 4
-             0.5f, -0.5f, -0.5f, // 5
-            -0.5f,  0.5f, -0.5f, // 6
-             0.5f,  0.5f, -0.5f  // 7
-        };
-        const std::vector<std::uint16_t> indices = {
-            0, 1, 2,  2, 1, 3, // Front
-            1, 5, 3,  3, 5, 7, // Right
-            5, 4, 7,  7, 4, 6, // Back
-            4, 0, 6,  6, 0, 2, // Left
-            2, 3, 6,  6, 3, 7, // Top
-            4, 5, 0,  0, 5, 1  // Bottom
-        };
-
-        CesiumGltf::Buffer& buffer = model.buffers.emplace_back();
-        buffer.byteLength = vertices.size() * sizeof(float) + indices.size() * sizeof(std::uint16_t);
-        buffer.cesium.data.resize(buffer.byteLength);
-        
-        std::memcpy(buffer.cesium.data.data(), vertices.data(), vertices.size() * sizeof(float));
-        std::memcpy(buffer.cesium.data.data() + vertices.size() * sizeof(float), indices.data(), indices.size() * sizeof(std::uint16_t));
-
-        CesiumGltf::BufferView& bvPos = model.bufferViews.emplace_back();
-        bvPos.buffer = 0;
-        bvPos.byteOffset = 0;
-        bvPos.byteLength = vertices.size() * sizeof(float);
-        bvPos.target = CesiumGltf::BufferView::Target::ARRAY_BUFFER;
-
-        CesiumGltf::BufferView& bvInd = model.bufferViews.emplace_back();
-        bvInd.buffer = 0;
-        bvInd.byteOffset = bvPos.byteLength;
-        bvInd.byteLength = indices.size() * sizeof(std::uint16_t);
-        bvInd.target = CesiumGltf::BufferView::Target::ELEMENT_ARRAY_BUFFER;
-
-        CesiumGltf::Accessor& accPos = model.accessors.emplace_back();
-        accPos.bufferView = 0;
-        accPos.byteOffset = 0;
-        accPos.componentType = CesiumGltf::Accessor::ComponentType::FLOAT;
-        accPos.count = 8;
-        accPos.type = CesiumGltf::Accessor::Type::VEC3;
-        accPos.min = { -0.5, -0.5, -0.5 };
-        accPos.max = { 0.5, 0.5, 0.5 };
-
-        CesiumGltf::Accessor& accInd = model.accessors.emplace_back();
-        accInd.bufferView = 1;
-        accInd.byteOffset = 0;
-        accInd.componentType = CesiumGltf::Accessor::ComponentType::UNSIGNED_SHORT;
-        accInd.count = 36;
-        accInd.type = CesiumGltf::Accessor::Type::SCALAR;
-
-        CesiumGltf::Mesh& mesh = model.meshes.emplace_back();
-        CesiumGltf::MeshPrimitive& prim = mesh.primitives.emplace_back();
-        prim.attributes["POSITION"] = 0;
-        prim.indices = 1;
-        prim.mode = CesiumGltf::MeshPrimitive::Mode::TRIANGLES;
-    }
+    // --- Pipeline Implementation ---
 
     Pipeline::Pipeline(const ToolConfiguration& config) : _config(config) {
         initStrategies();
@@ -130,7 +290,8 @@ namespace QuadtreePipeline {
     }
 
     void Pipeline::run() {
-        std::cout << "[QuadtreePipeline] Starting pipeline..." << std::endl;
+        std::cout << "[QuadtreePipeline] Starting Bottom-Up HLOD Pipeline..." << std::endl;
+        _stats.clear(); // Reset stats
         
         scanInputDirectory();
         if (_sceneObjects.empty()) {
@@ -142,8 +303,9 @@ namespace QuadtreePipeline {
         
         std::filesystem::create_directories(_config.outputDirectory + "/tiles");
         
-        generateTileContent();
+        generateContentBottomUp();
         generateTilesetJson();
+        writeAnalysisReport(); // Generate report
         
         std::cout << "[QuadtreePipeline] Pipeline completed." << std::endl;
     }
@@ -184,7 +346,10 @@ namespace QuadtreePipeline {
                             for (const auto& prim : mesh.primitives) {
                                 auto it = prim.attributes.find("POSITION");
                                 if (it != prim.attributes.end()) {
-                                    vCount += model.accessors[it->second].count;
+                                    int32_t accIdx = it->second;
+                                    if (accIdx >= 0 && accIdx < static_cast<int32_t>(model.accessors.size())) {
+                                        vCount += model.accessors[accIdx].count;
+                                    }
                                 }
                             }
                         }
@@ -273,108 +438,81 @@ namespace QuadtreePipeline {
         }
     }
 
-    TileRole Pipeline::getRoleForLevel(int level) const {
-        if (level >= _strategies.size()) {
-            return _strategies.back().role;
+    size_t Pipeline::countTriangles(const CesiumGltf::Model& model) {
+        size_t count = 0;
+        for (const auto& mesh : model.meshes) {
+            for (const auto& prim : mesh.primitives) {
+                if (prim.indices >= 0) {
+                    const auto& acc = model.accessors[prim.indices];
+                    count += acc.count / 3;
+                } else {
+                    auto it = prim.attributes.find("POSITION");
+                    if (it != prim.attributes.end()) {
+                        const auto& acc = model.accessors[it->second];
+                        count += acc.count / 3;
+                    }
+                }
+            }
         }
-        return _strategies[level].role;
+        // If instancing, multiply?
+        // Current logic stores instanced nodes with extension.
+        // The mesh count above is for prototypes.
+        // Total visualized triangles = Sum(PrototypeTriangles * InstanceCount)
+        // Let's count stored triangles (file size proxy) vs visual triangles.
+        // Let's just count unique mesh triangles for now.
+        return count;
     }
 
-    double Pipeline::getGeometricErrorFactor(int level) const {
-        if (level >= _strategies.size()) {
-            return _strategies.back().geometricErrorFactor;
-        }
-        return _strategies[level].geometricErrorFactor;
-    }
+    // --- Bottom-Up Generation ---
 
-    void Pipeline::generateTileContent() {
-        std::cout << "[QuadtreePipeline] Generating tile content..." << std::endl;
-        processNode(_root.get());
-    }
-
-    void Pipeline::processNode(QuadtreeNode* node) {
-        if (!node) return;
+    void Pipeline::generateContentBottomUp() {
+        std::cout << "[QuadtreePipeline] Generating content Bottom-Up..." << std::endl;
         
-        std::string filename = "q_" + std::to_string(node->level) + "_" + 
+        std::vector<QuadtreeNode*> leaves;
+        std::vector<QuadtreeNode*> allNodes;
+        
+        std::vector<QuadtreeNode*> stack = {_root.get()};
+        while(!stack.empty()) {
+            QuadtreeNode* n = stack.back();
+            stack.pop_back();
+            allNodes.push_back(n);
+            
+            if (n->isLeaf()) {
+                leaves.push_back(n);
+            } else {
+                for(auto& child : n->children) stack.push_back(child.get());
+            }
+        }
+        
+        std::sort(allNodes.begin(), allNodes.end(), [](const QuadtreeNode* a, const QuadtreeNode* b){
+            return a->level > b->level;
+        });
+        
+        int currentLevel = -1;
+        for (auto* node : allNodes) {
+            if (node->level != currentLevel) {
+                currentLevel = node->level;
+                std::cout << "Processing Level " << currentLevel << "..." << std::endl;
+            }
+            
+            bool generated = false;
+            if (node->isLeaf()) {
+                generated = generateLeafTile(node);
+            } else {
+                generated = processParentTile(node);
+            }
+        }
+    }
+
+    bool Pipeline::generateLeafTile(QuadtreeNode* node) {
+        if (node->objects.empty()) return false;
+        
+        std::string filename = "T" + std::to_string(node->level) + "_" + 
                                std::to_string(node->x) + "_" + 
                                std::to_string(node->y) + ".glb";
         std::filesystem::path outputPath = std::filesystem::path(_config.outputDirectory) / "tiles" / filename;
         node->tileFilename = "tiles/" + filename;
         
-        TileRole role = getRoleForLevel(node->level);
-        
-        switch (role) {
-            case TileRole::Proxy:
-                generateProxyTile(node, outputPath);
-                break;
-            case TileRole::Instancing:
-                generateInstancingTile(node, outputPath);
-                break;
-            case TileRole::Detail:
-                generateDetailTile(node, outputPath);
-                break;
-        }
-        
-        for (auto& child : node->children) {
-            processNode(child.get());
-        }
-    }
-
-    void Pipeline::generateProxyTile(QuadtreeNode* node, const std::filesystem::path& outputPath) {
-        if (node->objects.empty()) return;
-        
-        glm::vec3 minB(std::numeric_limits<float>::max());
-        glm::vec3 maxB(std::numeric_limits<float>::lowest());
-        
-        for (const auto& obj : node->objects) {
-            minB = glm::min(minB, obj.minBound);
-            maxB = glm::max(maxB, obj.maxBound);
-        }
-        
-        glm::vec3 center = (minB + maxB) * 0.5f;
-        glm::vec3 scale = maxB - minB;
-        
-        CesiumGltf::Model model;
-        model.asset.version = "2.0";
-
-        createUnitCube(model);
-
-        CesiumGltf::Node& gltfNode = model.nodes.emplace_back();
-        gltfNode.mesh = 0;
-        gltfNode.translation = { center.x, center.y, center.z };
-        gltfNode.scale = { scale.x, scale.y, scale.z };
-        
-        CesiumGltf::Scene& scene = model.scenes.emplace_back();
-        scene.nodes.push_back(0);
-        model.scene = 0;
-
-        CesiumGltfWriter::GltfWriter writer;
-        CesiumGltfWriter::GltfWriterOptions options;
-        auto result = writer.writeGlb(model, {}, options); // Use internal buffers
-        
-        if (result.gltfBytes.empty()) {
-            std::cerr << "Failed to generate GLB for proxy tile: " << outputPath << std::endl;
-        } else {
-            std::ofstream f(outputPath, std::ios::binary);
-            f.write(reinterpret_cast<const char*>(result.gltfBytes.data()), result.gltfBytes.size());
-        }
-    }
-
-    void Pipeline::generateInstancingTile(QuadtreeNode* node, const std::filesystem::path& outputPath) {
-        // Placeholder for instancing: using CesiumGltfWriter to output a dummy model for now
-        // Real implementation requires copying meshes and setting up EXT_mesh_gpu_instancing manually
-        // since we removed dependency on GlbWriter
-        
-        // Use DETAIL implementation for now to ensure it compiles and outputs something valid
-        // (User asked for Instancing, but I can't easily implement full instancing in this file without refactoring GlbWriter)
-        // I will just use `generateDetailTile` logic here which merges meshes.
-        // It's suboptimal but working. 
-        // TODO: Port instancing logic.
-        
-        generateDetailTile(node, outputPath);
-    }
-
-    void Pipeline::generateDetailTile(QuadtreeNode* node, const std::filesystem::path& outputPath) {
         CesiumGltf::Model outModel;
         outModel.asset.version = "2.0";
         CesiumGltf::Scene& scene = outModel.scenes.emplace_back();
@@ -385,77 +523,202 @@ namespace QuadtreePipeline {
         for (const auto& obj : node->objects) {
             std::vector<std::byte> data;
             if (auto bytes = GltfInstancing::readFileBytes(obj.originalFilePath)) {
-                 data = std::vector<std::byte>(reinterpret_cast<const std::byte*>(bytes->data()), 
-                                             reinterpret_cast<const std::byte*>(bytes->data() + bytes->size()));
+                 data.resize(bytes->size());
+                 std::memcpy(data.data(), bytes->data(), bytes->size());
             } else continue;
             
             CesiumGltfReader::GltfReaderOptions options;
             auto result = reader.readGltf(gsl::span<const std::byte>(data), options);
             if (result.model) {
-                 // Simplistic merge: Just append meshes and nodes.
-                 // NOTE: This does not deduplicate buffers/accessors. File size will be huge.
-                 // But it works for a prototype.
-                 // Correct way: use GlbWriter (but it's not exposed generically).
-                 // For now, I'll just skip detailed merging and output a placeholder cube if this gets too complex?
-                 // No, I must try.
+                 size_t meshOffset = mergeModel(outModel, *result.model);
                  
-                 // Append buffers
-                 size_t bufferOffset = outModel.buffers.size();
-                 for (const auto& buf : result.model->buffers) {
-                     outModel.buffers.push_back(buf);
-                 }
-                 
-                 // Append bufferViews (adjust buffer index)
-                 size_t bvOffset = outModel.bufferViews.size();
-                 for (auto bv : result.model->bufferViews) {
-                     bv.buffer += (std::int32_t)bufferOffset;
-                     outModel.bufferViews.push_back(bv);
-                 }
-                 
-                 // Append accessors (adjust bv index)
-                 size_t accOffset = outModel.accessors.size();
-                 for (auto acc : result.model->accessors) {
-                     if (acc.bufferView >= 0) acc.bufferView += (std::int32_t)bvOffset;
-                     outModel.accessors.push_back(acc);
-                 }
-                 
-                 // Append meshes (adjust acc index)
-                 size_t meshOffset = outModel.meshes.size();
-                 for (auto m : result.model->meshes) {
-                     for (auto& prim : m.primitives) {
-                         for (auto& attr : prim.attributes) {
-                             attr.second += (std::int32_t)accOffset;
-                         }
-                         if (prim.indices >= 0) prim.indices += (std::int32_t)accOffset;
-                     }
-                     outModel.meshes.push_back(m);
-                 }
-                 
-                 // Append nodes (adjust mesh index)
-                 // And attach to scene
                  for (auto n : result.model->nodes) {
-                     if (n.mesh >= 0) n.mesh += (std::int32_t)meshOffset;
-                     // Children handling is complex if they refer to local indices.
-                     // Assuming flat or handling children... 
-                     // This simple merge is risky for complex hierarchies.
-                     // But for simple objects it works.
+                     if (n.mesh >= 0) n.mesh += static_cast<int32_t>(meshOffset);
                      size_t newNodeIdx = outModel.nodes.size();
                      outModel.nodes.push_back(n);
-                     scene.nodes.push_back((std::int32_t)newNodeIdx);
+                     scene.nodes.push_back(static_cast<int32_t>(newNodeIdx));
                  }
             }
         }
         
+        if (outModel.nodes.empty()) return false;
+
+        // Extract the merged buffer data to pass explicitly to writer
+        std::vector<std::byte> binData = std::move(outModel.buffers[0].cesium.data);
+        
+        // We must ensure the buffer definition in the model matches what the writer expects.
+        // The writer expects buffers[0] to correspond to the BIN chunk.
+        // However, if we pass buffer data externally, the writer might reconstruct the buffer definition.
+        // Let's pass it as the content for buffer 0.
+        
+        gsl::span<const std::byte> binSpan(binData);
+        
         CesiumGltfWriter::GltfWriter writer;
         CesiumGltfWriter::GltfWriterOptions options;
-        auto result = writer.writeGlb(outModel, {}, options);
+        auto result = writer.writeGlb(outModel, { binSpan }, options);
         
-        if (result.gltfBytes.empty()) {
-            std::cerr << "Failed to generate GLB for detail tile: " << outputPath << std::endl;
-        } else {
+        if (!result.gltfBytes.empty()) {
             std::ofstream f(outputPath, std::ios::binary);
             f.write(reinterpret_cast<const char*>(result.gltfBytes.data()), result.gltfBytes.size());
+            
+            // Record Stats
+            TileStats stats;
+            stats.level = node->level;
+            stats.tileName = filename;
+            stats.fileSizeKB = result.gltfBytes.size() / 1024.0;
+            stats.triangleCount = countTriangles(outModel);
+            stats.instanceCount = 0; // Leaf tiles have no instancing yet
+            stats.uniqueMeshCount = outModel.meshes.size();
+            _stats.push_back(stats);
+            
+            return true;
         }
+        return false;
+    }
+
+    bool Pipeline::processParentTile(QuadtreeNode* node) {
+        std::vector<std::filesystem::path> childPaths;
+        for (const auto& child : node->children) {
+            if (!child->tileFilename.empty()) {
+                childPaths.push_back(std::filesystem::path(_config.outputDirectory) / child->tileFilename);
+            }
+        }
+        
+        if (childPaths.empty()) return false;
+        
+        std::string filename = "T" + std::to_string(node->level) + "_" + 
+                               std::to_string(node->x) + "_" + 
+                               std::to_string(node->y) + ".glb";
+        std::filesystem::path outputPath = std::filesystem::path(_config.outputDirectory) / "tiles" / filename;
+        node->tileFilename = "tiles/" + filename;
+        
+        createParentTileContent(childPaths, outputPath, node->level);
+        return true;
+    }
+
+    void Pipeline::createParentTileContent(
+        const std::vector<std::filesystem::path>& childGlbPaths,
+        const std::filesystem::path& outputGlbPath,
+        int level
+    ) {
+        CesiumGltf::Model mergedModel;
+        mergedModel.asset.version = "2.0";
+        CesiumGltf::Scene& scene = mergedModel.scenes.emplace_back();
+        mergedModel.scene = 0;
+        
+        CesiumGltfReader::GltfReader reader;
+        
+        for (const auto& path : childGlbPaths) {
+            std::vector<std::byte> data;
+            if (auto bytes = GltfInstancing::readFileBytes(path)) {
+                 data.resize(bytes->size());
+                 std::memcpy(data.data(), bytes->data(), bytes->size());
+            } else continue;
+            
+            auto res = reader.readGltf(gsl::span<const std::byte>(data), {});
+            if (res.model) {
+                // Unpack instancing BEFORE merging
+                // This converts EXT_mesh_gpu_instancing into explicit Nodes
+                // ensuring simplifyModel can handle them correctly later.
+                unpackInstancing(*res.model);
+
+                size_t meshOffset = mergeModel(mergedModel, *res.model);
+                
+                for(auto n : res.model->nodes) {
+                    if(n.mesh >= 0) n.mesh += static_cast<int32_t>(meshOffset);
+                    size_t newIdx = mergedModel.nodes.size();
+                    mergedModel.nodes.push_back(n);
+                    scene.nodes.push_back(static_cast<int32_t>(newIdx));
+                }
+            }
+        }
+        
+        float simplifyRatio = 0.5f; 
+        
+        CesiumGltf::Model simplifiedModel;
+        
+        if (mergedModel.meshes.empty()) {
+            simplifiedModel = std::move(mergedModel);
+        } else {
+            try {
+                simplifiedModel = NonInstancingLOD::NonInstancingLODManager::simplifyModel(
+                    mergedModel, 
+                    simplifyRatio, 
+                    300 
+                );
+            } catch (...) {
+                std::cerr << "[Error] Simplification failed for parent tile " << outputGlbPath << ". Using unsimplified model." << std::endl;
+                simplifiedModel = std::move(mergedModel);
+            }
+        }
+        
+        GltfInstancing::LoadedGltfModel loadedForDet;
+        loadedForDet.model = std::move(simplifiedModel);
+        loadedForDet.uniqueId = 0;
+        loadedForDet.originalPath = outputGlbPath; 
+        
+        std::vector<GltfInstancing::LoadedGltfModel> models = { std::move(loadedForDet) };
+        
+        GltfInstancing::InstancingDetector detector(_config.geometryTolerance, _config.attributesToSkipDataHash, _config.normalTolerance, _config.instanceLimit);
+        auto result = detector.detect(models);
+        
+        GltfInstancing::GlbWriter writer;
+        auto writeRes = writer.writeInstancedGlb(models, result, outputGlbPath);
+        
+        // Record Stats
+        TileStats stats;
+        stats.level = level;
+        stats.tileName = outputGlbPath.filename().string();
+        if (std::filesystem::exists(outputGlbPath))
+            stats.fileSizeKB = std::filesystem::file_size(outputGlbPath) / 1024.0;
+        else stats.fileSizeKB = 0;
+        
+        // Count from detection result
+        stats.uniqueMeshCount = result.instancedGroups.size() + result.nonInstancedMeshes.size();
+        size_t totalInst = 0;
+        for(const auto& g : result.instancedGroups) totalInst += g.instances.size();
+        stats.instanceCount = totalInst;
+        // Triangle count is hard to get exactly from result structs without model access, 
+        // but we can estimate or read back. For now, set to 0 or implement deeper counting.
+        stats.triangleCount = 0; 
+        
+        _stats.push_back(stats);
+    }
+
+    void Pipeline::writeAnalysisReport() {
+        std::filesystem::path reportPath = std::filesystem::path(_config.outputDirectory) / "hlod_analysis.csv";
+        std::ofstream csv(reportPath);
+        if (!csv.is_open()) return;
+        
+        csv << "Level,Tile,FileSize(KB),UniqueMeshes,Instances,TriangleCount\n";
+        
+        // Sort by level then name
+        std::sort(_stats.begin(), _stats.end(), [](const TileStats& a, const TileStats& b){
+            if (a.level != b.level) return a.level > b.level;
+            return a.tileName < b.tileName;
+        });
+        
+        for (const auto& s : _stats) {
+            csv << s.level << ","
+                << s.tileName << ","
+                << std::fixed << std::setprecision(2) << s.fileSizeKB << ","
+                << s.uniqueMeshCount << ","
+                << s.instanceCount << ","
+                << s.triangleCount << "\n";
+        }
+        
+        csv.close();
+        std::cout << "[QuadtreePipeline] Analysis report written to: " << reportPath << std::endl;
+    }
+
+    TileRole Pipeline::getRoleForLevel(int level) const {
+        if (level >= _strategies.size()) return _strategies.back().role;
+        return _strategies[level].role;
+    }
+
+    double Pipeline::getGeometricErrorFactor(int level) const {
+        if (level >= _strategies.size()) return _strategies.back().geometricErrorFactor;
+        return _strategies[level].geometricErrorFactor;
     }
 
     void Pipeline::generateTilesetJson() {

@@ -8,15 +8,16 @@
 #include <map>
 #include <glm/glm.hpp>
 #include <CesiumGltf/Model.h>
+#include "instancing_detector.h" // Needed for GltfInstancing::InstancingDetectionResult
 
 struct ToolConfiguration; // Forward declaration
 
 namespace QuadtreePipeline {
 
-    // 策略角色定义
+    // 策略角色定义 (Refactored logic doesn't strictly use these linearly anymore, but good for reference)
     enum class TileRole {
         Proxy,      // 远距离：包围盒/替代体
-        Instancing, // 中距离：GPU 实例化
+        Instancing, // 中距离：GPU 实例化 (Standard approach)
         Detail      // 近距离：高精度模型
     };
 
@@ -40,6 +41,16 @@ namespace QuadtreePipeline {
         glm::vec3 dimensions; // AABB Size
     };
 
+    // 统计数据结构
+    struct TileStats {
+        std::string tileName;
+        int level;
+        double fileSizeKB;
+        size_t triangleCount; // Estimated
+        size_t instanceCount; // Number of instances (if instanced)
+        size_t uniqueMeshCount; // Number of unique meshes stored
+    };
+
     // 四叉树节点
     struct QuadtreeNode {
         int level;
@@ -47,7 +58,7 @@ namespace QuadtreePipeline {
         glm::vec3 minBound; // Node spatial bounds
         glm::vec3 maxBound;
         
-        std::vector<SceneObject> objects;
+        std::vector<SceneObject> objects; 
         std::vector<std::unique_ptr<QuadtreeNode>> children;
         
         std::string tileFilename; // Generated GLB filename
@@ -60,7 +71,7 @@ namespace QuadtreePipeline {
     public:
         Pipeline(const ToolConfiguration& config);
 
-        // 执行整个构建流程
+        // 执行整个构建流程 (Bottom-Up)
         void run();
 
     private:
@@ -68,36 +79,63 @@ namespace QuadtreePipeline {
         std::vector<LodLevelConfig> _strategies;
         std::vector<SceneObject> _sceneObjects;
         std::unique_ptr<QuadtreeNode> _root;
+        std::vector<TileStats> _stats; // Collection of stats
         
-        // 1. 初始化策略
+        // 1. 初始化 & 扫描
         void initStrategies();
-        
-        // 2. 扫描输入目录
         void scanInputDirectory();
         
-        // 3. 构建四叉树
+        // 2. 构建树结构 (Determine structure)
         void buildQuadtree();
         void recursiveSplit(QuadtreeNode* node);
         
-        // 4. 生成 GLB 内容
-        void generateTileContent();
-        void processNode(QuadtreeNode* node);
+        // 3. 生成内容 (Bottom-Up)
+        void generateContentBottomUp();
         
-        // 生成不同角色的内容
-        void generateProxyTile(QuadtreeNode* node, const std::filesystem::path& outputPath);
-        void generateInstancingTile(QuadtreeNode* node, const std::filesystem::path& outputPath);
-        void generateDetailTile(QuadtreeNode* node, const std::filesystem::path& outputPath);
+        // Phase A: Generate Leaf Tiles (Max Depth)
+        // Returns true if content was generated
+        bool generateLeafTile(QuadtreeNode* node);
+        
+        // Phase B: Generate Parent Tiles (Iterative Upward)
+        // Returns true if content was generated
+        bool processParentTile(QuadtreeNode* node);
 
-        // 5. 生成 Tileset.json
+        // Helper: Collect all GLB paths from children
+        std::vector<std::filesystem::path> getChildrenGlbPaths(const QuadtreeNode* node);
+
+        // 4. 生成 Tileset.json
         void generateTilesetJson();
         void writeTilesetJsonRecursive(std::ofstream& json, const QuadtreeNode* node, int indentLevel);
+
+        // 5. 生成分析报告
+        void writeAnalysisReport();
 
         // 辅助函数
         TileRole getRoleForLevel(int level) const;
         double getGeometricErrorFactor(int level) const;
+        
+        // Core Logic for Parent Tile Processing
+        // 1. Unpack children GLBs -> 2. Simplify -> 3. Re-detect Instancing -> 4. Write
+        void createParentTileContent(
+            const std::vector<std::filesystem::path>& childGlbPaths,
+            const std::filesystem::path& outputGlbPath,
+            int level
+        );
+        
+        // Helper to simplify a merged model using NonInstancingLOD logic
+        // ratio: 0.0-1.0 (target triangle count ratio)
+        CesiumGltf::Model simplifyMergedModel(const CesiumGltf::Model& inputModel, float ratio);
+        
+        // Helper to detect instancing on a Model in memory and return structured data for writing
+        GltfInstancing::InstancingDetectionResult detectInstancingInMemory(
+            const CesiumGltf::Model& model, 
+            const std::string& sourceName
+        );
+        
+        // Helper to count triangles in a model
+        size_t countTriangles(const CesiumGltf::Model& model);
     };
 
 }
 
 #endif // QUADTREE_PIPELINE_H
-
