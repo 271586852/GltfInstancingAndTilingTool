@@ -46,7 +46,8 @@ namespace QuadtreePipeline {
         std::string tileName;
         int level;
         double fileSizeKB;
-        size_t triangleCount; // Estimated
+        size_t triangleCount; // Unique/Stored Triangles (File size proxy)
+        size_t renderedTriangleCount; // New: Total Visualized Triangles (GPU Load proxy)
         size_t instanceCount; // Number of instances (if instanced)
         size_t uniqueMeshCount; // Number of unique meshes stored
     };

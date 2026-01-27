@@ -380,6 +380,10 @@ namespace QuadtreePipeline {
         float height = globalMax.y - globalMin.y;
         float maxSize = std::max(width, height);
         
+        // Add a small epsilon to width/height to ensure objects exactly on the max boundary are included
+        // because the split logic uses [min, max) range.
+        maxSize += 0.01f; 
+
         _root = std::make_unique<QuadtreeNode>();
         _root->level = 0;
         _root->x = 0;
@@ -567,7 +571,8 @@ namespace QuadtreePipeline {
             stats.tileName = filename;
             stats.fileSizeKB = result.gltfBytes.size() / 1024.0;
             stats.triangleCount = countTriangles(outModel);
-            stats.instanceCount = 0; // Leaf tiles have no instancing yet
+            stats.renderedTriangleCount = stats.triangleCount; // Leaf tiles have no instancing, so 1:1
+            stats.instanceCount = 0; 
             stats.uniqueMeshCount = outModel.meshes.size();
             _stats.push_back(stats);
             
@@ -594,6 +599,25 @@ namespace QuadtreePipeline {
         
         createParentTileContent(childPaths, outputPath, node->level);
         return true;
+    }
+
+    size_t getMeshTriangleCount(const CesiumGltf::Model& model, int32_t meshIndex) {
+        if (meshIndex < 0 || meshIndex >= static_cast<int32_t>(model.meshes.size())) return 0;
+        const auto& mesh = model.meshes[meshIndex];
+        size_t count = 0;
+        for (const auto& prim : mesh.primitives) {
+            if (prim.indices >= 0) {
+                if (prim.indices < static_cast<int32_t>(model.accessors.size())) {
+                    count += model.accessors[prim.indices].count / 3;
+                }
+            } else {
+                auto it = prim.attributes.find("POSITION");
+                if (it != prim.attributes.end() && it->second < static_cast<int32_t>(model.accessors.size())) {
+                    count += model.accessors[it->second].count / 3;
+                }
+            }
+        }
+        return count;
     }
 
     void Pipeline::createParentTileContent(
@@ -675,12 +699,30 @@ namespace QuadtreePipeline {
         
         // Count from detection result
         stats.uniqueMeshCount = result.instancedGroups.size() + result.nonInstancedMeshes.size();
+        
         size_t totalInst = 0;
-        for(const auto& g : result.instancedGroups) totalInst += g.instances.size();
+        size_t storedTris = 0;
+        size_t renderedTris = 0;
+
+        // 1. Instanced Groups
+        for(const auto& g : result.instancedGroups) {
+            totalInst += g.instances.size();
+            // Use local helper to count triangles from the model used for detection
+            size_t tris = getMeshTriangleCount(simplifiedModel, g.representativeMeshIndexInModel);
+            storedTris += tris;
+            renderedTris += tris * g.instances.size();
+        }
+
+        // 2. Non-Instanced Meshes
+        for(const auto& m : result.nonInstancedMeshes) {
+            size_t tris = getMeshTriangleCount(simplifiedModel, m.originalMeshIndexInModel);
+            storedTris += tris;
+            renderedTris += tris;
+        }
+
         stats.instanceCount = totalInst;
-        // Triangle count is hard to get exactly from result structs without model access, 
-        // but we can estimate or read back. For now, set to 0 or implement deeper counting.
-        stats.triangleCount = 0; 
+        stats.triangleCount = storedTris; 
+        stats.renderedTriangleCount = renderedTris;
         
         _stats.push_back(stats);
     }
@@ -690,7 +732,7 @@ namespace QuadtreePipeline {
         std::ofstream csv(reportPath);
         if (!csv.is_open()) return;
         
-        csv << "Level,Tile,FileSize(KB),UniqueMeshes,Instances,TriangleCount\n";
+        csv << "Level,Tile,FileSize(KB),UniqueMeshes,Instances,StoredTriangles,RenderedTriangles,ReductionRatio\n";
         
         // Sort by level then name
         std::sort(_stats.begin(), _stats.end(), [](const TileStats& a, const TileStats& b){
@@ -699,12 +741,16 @@ namespace QuadtreePipeline {
         });
         
         for (const auto& s : _stats) {
+            double ratio = (s.renderedTriangleCount > 0) ? (double)s.triangleCount / s.renderedTriangleCount : 1.0;
+            
             csv << s.level << ","
                 << s.tileName << ","
                 << std::fixed << std::setprecision(2) << s.fileSizeKB << ","
                 << s.uniqueMeshCount << ","
                 << s.instanceCount << ","
-                << s.triangleCount << "\n";
+                << s.triangleCount << ","
+                << s.renderedTriangleCount << ","
+                << std::setprecision(4) << ratio << "\n";
         }
         
         csv.close();
