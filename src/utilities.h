@@ -138,6 +138,9 @@ namespace GltfInstancing {
 
     bool areBoundingBoxesSimilar(const BoundingBox& bb1, const BoundingBox& bb2, double tolerance);
 
+    // Helper to switch bounding box axes from Y-Up (GLB) to Z-Up (Cesium)
+    void changeGLBToCesiumAxis(std::vector<double>& box);
+
 } // namespace GltfInstancing
 #endif // UTILITIES_H
 // Refreshed to fix caching

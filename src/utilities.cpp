@@ -628,5 +628,19 @@ namespace GltfInstancing {
 
         return true;
     }
+
+    void changeGLBToCesiumAxis(std::vector<double>& box) {
+        if (box.size() != 12) return;
+        // Swap Center Y and Z
+        std::swap(box[1], box[2]);
+        
+        // Swap Scale Y and Scale Z (assuming axis aligned construction as in QuadtreePipeline)
+        // Y-axis extent is typically at index 7, Z-axis extent at index 11
+        std::swap(box[7], box[11]);
+        
+        // Note: This assumes box was constructed with Y-up (Y is height) and we want Z-up (Z is height)
+        // and that the box axes are aligned with world axes.
+    }
+
 } // namespace GltfInstancing
 // Refreshed to fix caching

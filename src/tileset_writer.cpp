@@ -80,16 +80,6 @@ namespace GltfInstancing {
         return true;
     }
 
-    void changeGLBToCesiumAxis(std::vector<double>& boundingBox) {
-        std::vector<double> tempBoundingBox = {
-            boundingBox[0], -boundingBox[2], boundingBox[1],
-            boundingBox[3], boundingBox[4], boundingBox[5],
-            boundingBox[6], boundingBox[11], boundingBox[8],
-            boundingBox[9], boundingBox[10], boundingBox[7]
-        };
-        boundingBox = tempBoundingBox;
-    }
-
     bool GetInstanceTransform(const Model& gltf, int nodeIndex, std::vector<glm::mat4>& transforms) {
         // ... (Keep existing implementation) ...
         auto it = gltf.nodes[nodeIndex].extensions.find("EXT_mesh_gpu_instancing");
