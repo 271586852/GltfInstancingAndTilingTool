@@ -106,7 +106,7 @@ namespace QuadtreePipeline {
 
         // 4. 生成 Tileset.json
         void generateTilesetJson();
-        void writeTilesetJsonRecursive(std::ofstream& json, const QuadtreeNode* node, int indentLevel);
+        void writeTilesetJsonRecursive(std::ofstream& json, const QuadtreeNode* node, int indentLevel, bool writeBraces);
 
         // 5. 生成分析报告
         void writeAnalysisReport();

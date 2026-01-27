@@ -39,6 +39,15 @@ struct ToolConfiguration {
     bool enableQuadtree = false;
     int quadtreeMaxDepth = 6;
     int quadtreeMaxObjectsPerTile = 50;
+    
+    // Default transform to place the model on Earth (User provided)
+    std::vector<double> rootTransform = {
+        -0.9023136427, 0.4310860309, 0.0, 0.0, 
+        0.3731804153, 0.7899661139, 0.4899996041, 0.0, 
+        0.2117562093, 0.4431713488, -0.8716388481, 0.0, 
+        -2418525.0442296155, 5374967.3619212005, 2429440.091217066, 1.0
+    };
+
     // (Strategies could be loaded from JSON, but we use defaults for now)
 
     // Flags to track if a parameter was set

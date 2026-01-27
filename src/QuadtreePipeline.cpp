@@ -280,12 +280,13 @@ namespace QuadtreePipeline {
     }
 
     void Pipeline::initStrategies() {
+        // Adjusted factors to trigger refinement earlier (higher factors = larger error = refine sooner)
         _strategies = {
-            {0, TileRole::Proxy, 1.0},
-            {1, TileRole::Instancing, 0.4},
-            {2, TileRole::Instancing, 0.2},
-            {3, TileRole::Detail, 0.05},
-            {4, TileRole::Detail, 0.0}
+            {0, TileRole::Proxy, 2.0},      // L0: Was 1.0 -> 2.0 (更容易细分到 L1)
+            {1, TileRole::Instancing, 0.8}, // L1: Was 0.4 -> 0.8 (更容易细分到 L2)
+            {2, TileRole::Instancing, 0.4}, // L2: Was 0.2 -> 0.4
+            {3, TileRole::Detail, 0.1},     // L3: Was 0.05 -> 0.1
+            {4, TileRole::Detail, 0.0}      // L4: 0.0 (Max detail)
         };
     }
 
@@ -376,10 +377,15 @@ namespace QuadtreePipeline {
             globalMax = glm::max(globalMax, obj.maxBound);
         }
         
+        std::cout << "[Debug] Global Min: " << globalMin.x << ", " << globalMin.y << ", " << globalMin.z << std::endl;
+        std::cout << "[Debug] Global Max: " << globalMax.x << ", " << globalMax.y << ", " << globalMax.z << std::endl;
+
         float width = globalMax.x - globalMin.x;
         float height = globalMax.y - globalMin.y;
         float maxSize = std::max(width, height);
         
+        std::cout << "[Debug] Quadtree Size: " << width << " x " << height << " (Max: " << maxSize << ")" << std::endl;
+
         // Add a small epsilon to width/height to ensure objects exactly on the max boundary are included
         // because the split logic uses [min, max) range.
         maxSize += 0.01f; 
@@ -514,6 +520,9 @@ namespace QuadtreePipeline {
         std::string filename = "T" + std::to_string(node->level) + "_" + 
                                std::to_string(node->x) + "_" + 
                                std::to_string(node->y) + ".glb";
+        
+        std::cout << "[Debug] Generating Leaf " << filename << " with " << node->objects.size() << " objects." << std::endl;
+
         std::filesystem::path outputPath = std::filesystem::path(_config.outputDirectory) / "tiles" / filename;
         node->tileFilename = "tiles/" + filename;
         
@@ -772,50 +781,79 @@ namespace QuadtreePipeline {
         jsonFile << "{" << std::endl;
         jsonFile << "  \"asset\": { \"version\": \"1.1\" }," << std::endl;
         jsonFile << "  \"geometricError\": 10000.0," << std::endl;
-        jsonFile << "  \"root\": ";
-        writeTilesetJsonRecursive(jsonFile, _root.get(), 2);
-        jsonFile << std::endl << "}" << std::endl;
+        
+        jsonFile << "  \"root\": {" << std::endl; // Start root object
+
+        // Add User Provided Transform
+        if (_config.rootTransform.size() == 16) {
+            jsonFile << "    \"transform\": [" << std::endl;
+            for(int i=0; i<16; i+=4) {
+                jsonFile << "      " << _config.rootTransform[i] << ", " << _config.rootTransform[i+1] << ", " 
+                         << _config.rootTransform[i+2] << ", " << _config.rootTransform[i+3];
+                if (i < 12) jsonFile << "," << std::endl;
+                else jsonFile << std::endl;
+            }
+            jsonFile << "    ]," << std::endl;
+        }
+
+        // Use indent=4 because we are already inside "root": { ... }
+        writeTilesetJsonRecursive(jsonFile, _root.get(), 4, false); // false = don't wrap in braces, write content of root
+        
+        jsonFile << "  }" << std::endl; // End root object
+        jsonFile << "}" << std::endl;
         jsonFile.close();
     }
 
-    void Pipeline::writeTilesetJsonRecursive(std::ofstream& json, const QuadtreeNode* node, int indent) {
+    // Adjusted to optionally write the surrounding braces
+    void Pipeline::writeTilesetJsonRecursive(std::ofstream& json, const QuadtreeNode* node, int indent, bool writeBraces) {
         std::string sp(indent, ' ');
-        json << "{" << std::endl;
+        if (writeBraces) json << sp << "{" << std::endl;
+        
+        std::string innerSp = writeBraces ? std::string(indent + 2, ' ') : sp;
         
         glm::vec3 min = node->minBound;
         glm::vec3 max = node->maxBound;
         glm::vec3 center = (min + max) * 0.5f;
         glm::vec3 scale = (max - min) * 0.5f;
         
-        json << sp << "  \"boundingVolume\": {" << std::endl;
-        json << sp << "    \"box\": [" << center.x << ", " << center.y << ", " << center.z << ", " 
+        json << innerSp << "\"boundingVolume\": {" << std::endl;
+        json << innerSp << "  \"box\": [" << center.x << ", " << center.y << ", " << center.z << ", " 
              << scale.x << ", 0, 0, " 
              << "0, " << scale.y << ", 0, " 
              << "0, 0, " << scale.z << "]" << std::endl;
-        json << sp << "  }," << std::endl;
+        json << innerSp << "}," << std::endl;
         
         double diagonal = glm::length(max - min);
         double error = diagonal * getGeometricErrorFactor(node->level);
-        json << sp << "  \"geometricError\": " << error << "," << std::endl;
         
-        json << sp << "  \"refine\": \"REPLACE\"," << std::endl;
+        // Fix: If a node has children (not a leaf), its Geometric Error MUST NOT be 0.
+        // Otherwise, Cesium will think this tile is perfect and never refine to its children.
+        // If strategy gave us 0.0 (e.g. because we exceeded strategy depth), enforce a minimum error.
+        if (!node->children.empty() && error < 0.001) {
+            error = std::max(diagonal * 0.05, 0.1); // Fallback: 5% of diagonal or at least 0.1
+        }
+
+        json << innerSp << "\"geometricError\": " << error << "," << std::endl;
         
-        json << sp << "  \"content\": { \"uri\": \"" << node->tileFilename << "\" }";
+        json << innerSp << "\"refine\": \"REPLACE\"," << std::endl;
+        
+        json << innerSp << "\"content\": { \"uri\": \"" << node->tileFilename << "\" }";
         
         if (!node->children.empty()) {
             json << "," << std::endl;
-            json << sp << "  \"children\": [" << std::endl;
+            json << innerSp << "\"children\": [" << std::endl;
             for (size_t i = 0; i < node->children.size(); ++i) {
-                writeTilesetJsonRecursive(json, node->children[i].get(), indent + 2);
+                // Children always write braces
+                writeTilesetJsonRecursive(json, node->children[i].get(), indent + (writeBraces ? 4 : 2), true);
                 if (i < node->children.size() - 1) json << ",";
                 json << std::endl;
             }
-            json << sp << "  ]" << std::endl;
+            json << innerSp << "]" << std::endl;
         } else {
             json << std::endl;
         }
         
-        json << sp << "}";
+        if (writeBraces) json << sp << "}";
     }
 
 }
