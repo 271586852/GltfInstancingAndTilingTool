@@ -1,5 +1,5 @@
-#ifndef QUADTREE_PIPELINE_H
-#define QUADTREE_PIPELINE_H
+#ifndef HLOD_PIPELINE_H
+#define HLOD_PIPELINE_H
 
 #include <string>
 #include <vector>
@@ -144,4 +144,4 @@ namespace HLOD {
 
 }
 
-#endif // QUADTREE_PIPELINE_H
+#endif // HLOD_PIPELINE_H

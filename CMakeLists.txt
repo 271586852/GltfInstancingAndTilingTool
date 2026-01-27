@@ -49,7 +49,7 @@ set(PROJECT_SOURCES
     src/glb_writer.cpp
     src/semantic_parser.cpp
     src/instancingLOD_manager.cpp
-    src/QuadtreePipeline.cpp
+    src/HLODPipeline.cpp
     src/tileset_writer.cpp
     src/utilities.cpp
     src/NonInstancingLOD_manager.cpp

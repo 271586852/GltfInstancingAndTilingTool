@@ -634,7 +634,7 @@ namespace GltfInstancing {
         // Swap Center Y and Z
         std::swap(box[1], box[2]);
         
-        // Swap Scale Y and Scale Z (assuming axis aligned construction as in QuadtreePipeline)
+        // Swap Scale Y and Scale Z (assuming axis aligned construction as in HLOD pipeline)
         // Y-axis extent is typically at index 7, Z-axis extent at index 11
         std::swap(box[7], box[11]);
         

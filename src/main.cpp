@@ -7,7 +7,7 @@
 #include "semantic_parser.h" // 新增
 #include "instancingLOD_manager.h"     // 新增
 #include "NonInstancingLOD_manager.h" // 新增
-#include "QuadtreePipeline.h" // 新增
+#include "HLODPipeline.h" // 新增
 
 #include <iostream>
 #include <filesystem>
@@ -183,13 +183,13 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") config.enableNonInstancedLodInstancing = true;
                 else config.enableNonInstancedLodInstancing = false;
-            } else if (key == "enable_quadtree") {
+            } else if (key == "enable_hlod" || key == "enable_quadtree") {
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") config.enableQuadtree = true;
                 else config.enableQuadtree = false;
-            } else if (key == "quadtree_max_depth") {
+            } else if (key == "hlod_max_depth" || key == "quadtree_max_depth") {
                 try { config.quadtreeMaxDepth = std::stoi(value); } catch(...) {}
-            } else if (key == "quadtree_max_objects_per_tile") {
+            } else if (key == "hlod_max_objects_per_tile" || key == "quadtree_max_objects_per_tile") {
                 try { config.quadtreeMaxObjectsPerTile = std::stoi(value); } catch(...) {}
             }
             else {
@@ -222,9 +222,9 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("  --instance-limit <value>:            Minimum number of instances to form a group. Default: 2.");
     GltfInstancing::logInfo("  --mesh-segmentation:                 Export each mesh as a separate GLB file. Default: false.");
     GltfInstancing::logInfo("  --csv-dir <path>:                    Path to directory with CSV files for post-processing.");
-    GltfInstancing::logInfo("  --enable-quadtree:                   Enable Quadtree HLOD pipeline. Default: false.");
-    GltfInstancing::logInfo("  --quadtree-max-depth <value>:        Max depth for Quadtree. Default: 6.");
-    GltfInstancing::logInfo("  --quadtree-max-objs <value>:         Max objects per tile for Quadtree splitting. Default: 50.");
+    GltfInstancing::logInfo("  --enable-hlod:                       Enable HLOD pipeline. Default: false.");
+    GltfInstancing::logInfo("  --hlod-max-depth <value>:            Max depth for HLOD. Default: 6.");
+    GltfInstancing::logInfo("  --hlod-max-objs <value>:             Max objects per tile for HLOD splitting. Default: 50.");
 }
 
 struct CsvEntry {
@@ -739,23 +739,23 @@ int main(int argc, char* argv[]) {
             } else {
                 GltfInstancing::logError("--csv-dir option (CLI) requires a path."); printUsage(argv[0]); return 1;
             }
-        } else if (arg == "--enable-quadtree") {
+        } else if (arg == "--enable-hlod" || arg == "--enable-quadtree") {
             config.enableQuadtree = true;
             config.enableQuadtreeSet = true;
-        } else if (arg == "--quadtree-max-depth") {
+        } else if (arg == "--hlod-max-depth" || arg == "--quadtree-max-depth") {
             if (argIndex + 1 < argc) {
                 try {
                     config.quadtreeMaxDepth = std::stoi(argv[++argIndex]);
                 } catch(...) {
-                    GltfInstancing::logWarning("Invalid value for --quadtree-max-depth. Using default.");
+                    GltfInstancing::logWarning("Invalid value for --hlod-max-depth. Using default.");
                 }
             }
-        } else if (arg == "--quadtree-max-objs") {
+        } else if (arg == "--hlod-max-objs" || arg == "--quadtree-max-objs") {
              if (argIndex + 1 < argc) {
                 try {
                     config.quadtreeMaxObjectsPerTile = std::stoi(argv[++argIndex]);
                 } catch(...) {
-                    GltfInstancing::logWarning("Invalid value for --quadtree-max-objs. Using default.");
+                    GltfInstancing::logWarning("Invalid value for --hlod-max-objs. Using default.");
                 }
             }
         } else { // An unknown option
@@ -1180,12 +1180,12 @@ int main(int argc, char* argv[]) {
     // Stage 3: CSV Processing (Always run if configured)
     processCsvAgainstGlb(config);
 
-    // --- Quadtree Pipeline Execution ---
+    // --- HLOD Pipeline Execution ---
     // HLOD is now executed AFTER standard processing, using the results of Stage 1/2.
     // NOTE: It requires separated GLB files. 
-    // If meshSegmentation was NOT enabled by user, we perform a temporary segmentation here for Quadtree.
+    // If meshSegmentation was NOT enabled by user, we perform a temporary segmentation here for HLOD.
     if (config.enableQuadtree) {
-        GltfInstancing::logInfo("Quadtree Pipeline Enabled (Post-Processing Stage).");
+        GltfInstancing::logInfo("HLOD Pipeline Enabled (Post-Processing Stage).");
         
         std::string quadtreeInputPath = "";
         bool tempInput = false;
@@ -1194,16 +1194,16 @@ int main(int argc, char* argv[]) {
         if (config.meshSegmentation) {
              // User already generated segmented files, use them directly
              quadtreeInputPath = (std::filesystem::path(config.outputDirectory) / "segmented_glb_output").string();
-             GltfInstancing::logInfo("Using existing segmented output for Quadtree input: " + quadtreeInputPath);
+             GltfInstancing::logInfo("Using existing segmented output for HLOD input: " + quadtreeInputPath);
         } else {
              // We need to generate separated files from the non-instanced result of Stage 1
-             GltfInstancing::logInfo("Mesh segmentation was not enabled. Generating temporary separated GLBs for Quadtree input...");
+             GltfInstancing::logInfo("Mesh segmentation was not enabled. Generating temporary separated GLBs for HLOD input...");
              
              // Locate Non-Instanced Output from Stage 1
              std::filesystem::path nonInstancedGlbPath = std::filesystem::path(config.outputDirectory) / "non_instanced_meshes.glb";
              
              if (std::filesystem::exists(nonInstancedGlbPath)) {
-                 std::filesystem::path tempOutputDir = std::filesystem::path(config.outputDirectory) / "quadtree_temp_input";
+                 std::filesystem::path tempOutputDir = std::filesystem::path(config.outputDirectory) / "HLOD_temp_input";
                  std::filesystem::create_directories(tempOutputDir);
                  
                  GltfInstancing::GlbReader splitReader;
@@ -1215,7 +1215,7 @@ int main(int argc, char* argv[]) {
                      if (splitWriter.writeMeshesAsSeparateGlbs(modelsToSplit, tempOutputDir)) {
                          quadtreeInputPath = tempOutputDir.string();
                          tempInput = true; 
-                         GltfInstancing::logInfo("Generated temporary Quadtree input at: " + quadtreeInputPath);
+                         GltfInstancing::logInfo("Generated temporary HLOD input at: " + quadtreeInputPath);
                      } else {
                          GltfInstancing::logError("Failed to generate temporary separated GLBs.");
                      }
@@ -1223,7 +1223,7 @@ int main(int argc, char* argv[]) {
                       GltfInstancing::logError("Failed to load non-instanced GLB for splitting: " + nonInstancedGlbPath.string());
                  }
              } else {
-                 GltfInstancing::logError("Non-instanced GLB not found (" + nonInstancedGlbPath.string() + "). Cannot run Quadtree Pipeline.");
+                 GltfInstancing::logError("Non-instanced GLB not found (" + nonInstancedGlbPath.string() + "). Cannot run HLOD Pipeline.");
              }
         }
 
@@ -1233,16 +1233,16 @@ int main(int argc, char* argv[]) {
             ToolConfiguration quadConfig = config;
             quadConfig.inputDirectory = quadtreeInputPath;
             // Output to a subfolder to avoid overwriting standard output
-            quadConfig.outputDirectory = (std::filesystem::path(config.outputDirectory) / "quadtree_output").string();
+            quadConfig.outputDirectory = (std::filesystem::path(config.outputDirectory) / "HLOD_output").string();
             
-            GltfInstancing::logInfo("Starting Quadtree Pipeline...");
+            GltfInstancing::logInfo("Starting HLOD Pipeline...");
             
-            // Ensure Quadtree output directory exists
+            // Ensure HLOD output directory exists
             std::filesystem::create_directories(quadConfig.outputDirectory);
 
-            QuadtreePipeline::Pipeline pipeline(quadConfig);
+            HLOD::Pipeline pipeline(quadConfig);
             pipeline.run();
-            GltfInstancing::logInfo("Quadtree Pipeline Finished. Output at: " + quadConfig.outputDirectory);
+            GltfInstancing::logInfo("HLOD Pipeline Finished. Output at: " + quadConfig.outputDirectory);
             
             // Optional: Cleanup temp
              if (tempInput) {

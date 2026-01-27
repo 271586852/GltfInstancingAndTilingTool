@@ -1,4 +1,4 @@
-#include "QuadtreePipeline.h"
+#include "HLODPipeline.h"
 #include "glb_reader.h"
 #include "glb_writer.h"
 #include "utilities.h"
