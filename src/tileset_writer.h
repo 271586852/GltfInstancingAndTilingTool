@@ -87,6 +87,9 @@ namespace GltfInstancing {
         //Cesium3DTilesWriter::TilesetWriter _writer;
     };
 
+    // 将包围盒从 glTF 的 Y-up 转为 Cesium 的 Z-up
+    void changeGLBToCesiumAxis(std::vector<double>& boundingBox);
+
 } // namespace GltfInstancing
 
 #endif // TILESET_WRITER_H

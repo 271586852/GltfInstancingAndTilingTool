@@ -56,9 +56,13 @@ namespace QuadtreePipeline {
     struct QuadtreeNode {
         int level;
         int x, y; // Grid coordinates at this level
-        glm::vec3 minBound; // Node spatial bounds
+        glm::vec3 minBound; // Node spatial bounds (Grid)
         glm::vec3 maxBound;
         
+        // New: Tight fitting bounds (Actual content)
+        glm::vec3 tightMinBound;
+        glm::vec3 tightMaxBound;
+
         std::vector<SceneObject> objects; 
         std::vector<std::unique_ptr<QuadtreeNode>> children;
         
@@ -89,7 +93,8 @@ namespace QuadtreePipeline {
         // 2. 构建树结构 (Determine structure)
         void buildQuadtree();
         void recursiveSplit(QuadtreeNode* node);
-        
+        void calculateTightBounds(QuadtreeNode* node); // New: Post-process to shrink bounds
+
         // 3. 生成内容 (Bottom-Up)
         void generateContentBottomUp();
         

@@ -13,6 +13,7 @@
 #include <cstdint> 
 #include <cstring> 
 #include <iomanip> // For std::setprecision
+#include <functional>
 #include <glm/gtc/matrix_transform.hpp>
 #include <CesiumGltf/ExtensionExtMeshGpuInstancing.h>
 #include <CesiumGltfReader/GltfReader.h>
@@ -238,36 +239,88 @@ namespace QuadtreePipeline {
     }
 
     void computeAABB(const CesiumGltf::Model& model, glm::vec3& minPt, glm::vec3& maxPt) {
-        minPt = glm::vec3(std::numeric_limits<float>::max());
-        maxPt = glm::vec3(std::numeric_limits<float>::lowest());
-        
-        bool found = false;
-        for (const auto& node : model.nodes) {
-             if (node.mesh >= 0 && node.mesh < static_cast<std::int32_t>(model.meshes.size())) {
-                 const auto& mesh = model.meshes[node.mesh];
-                 for (const auto& prim : mesh.primitives) {
-                     auto it = prim.attributes.find("POSITION");
-                     if (it != prim.attributes.end()) {
-                         int32_t accessorIdx = it->second;
-                         if (accessorIdx >= 0 && accessorIdx < static_cast<int32_t>(model.accessors.size())) {
-                             const auto& accessor = model.accessors[accessorIdx];
-                             const auto& min = accessor.min;
-                             const auto& max = accessor.max;
-                             if (min.size() >= 3 && max.size() >= 3) {
-                                 minPt.x = glm::min(minPt.x, (float)min[0]);
-                                 minPt.y = glm::min(minPt.y, (float)min[1]);
-                                 minPt.z = glm::min(minPt.z, (float)min[2]);
-                                 maxPt.x = glm::max(maxPt.x, (float)max[0]);
-                                 maxPt.y = glm::max(maxPt.y, (float)max[1]);
-                                 maxPt.z = glm::max(maxPt.z, (float)max[2]);
-                                 found = true;
-                             }
-                         }
-                     }
-                 }
-             }
+        GltfInstancing::BoundingBox overallBox;
+        glm::dmat4 identity(1.0);
+
+        auto mergeMeshWithTransform = [&](int32_t meshIndex, const glm::dmat4& worldTransform) {
+            if (meshIndex < 0 || static_cast<size_t>(meshIndex) >= model.meshes.size()) return;
+            GltfInstancing::BoundingBox meshBox = GltfInstancing::getMeshBoundingBox(model, model.meshes[meshIndex]);
+            if (!meshBox.isValid()) return;
+            meshBox.transform(worldTransform);
+            overallBox.merge(meshBox);
+        };
+
+        std::function<void(int32_t, const glm::dmat4&)> visitNode;
+        visitNode = [&](int32_t nodeIndex, const glm::dmat4& parentTransform) {
+            if (nodeIndex < 0 || static_cast<size_t>(nodeIndex) >= model.nodes.size()) return;
+            const CesiumGltf::Node& node = model.nodes[nodeIndex];
+            glm::dmat4 localTransform = GltfInstancing::getLocalTransformMatrix(node);
+            glm::dmat4 worldTransform = parentTransform * localTransform;
+
+            if (node.mesh >= 0) {
+                mergeMeshWithTransform(node.mesh, worldTransform);
+            }
+
+            for (int32_t childIndex : node.children) {
+                visitNode(childIndex, worldTransform);
+            }
+        };
+
+        bool traversed = false;
+        if (model.scene >= 0 && static_cast<size_t>(model.scene) < model.scenes.size()) {
+            const auto& scene = model.scenes[model.scene];
+            if (!scene.nodes.empty()) {
+                for (int32_t rootIndex : scene.nodes) {
+                    visitNode(rootIndex, identity);
+                }
+                traversed = true;
+            }
         }
-        if (!found) {
+
+        if (!traversed && !model.scenes.empty()) {
+            for (const auto& scene : model.scenes) {
+                for (int32_t rootIndex : scene.nodes) {
+                    visitNode(rootIndex, identity);
+                    traversed = true;
+                }
+            }
+        }
+
+        if (!traversed && !model.nodes.empty()) {
+            std::vector<bool> isChild(model.nodes.size(), false);
+            for (const auto& node : model.nodes) {
+                for (int32_t childIndex : node.children) {
+                    if (childIndex >= 0 && static_cast<size_t>(childIndex) < model.nodes.size()) {
+                        isChild[childIndex] = true;
+                    }
+                }
+            }
+
+            bool hasRoot = false;
+            for (size_t i = 0; i < model.nodes.size(); ++i) {
+                if (!isChild[i]) {
+                    visitNode(static_cast<int32_t>(i), identity);
+                    hasRoot = true;
+                }
+            }
+
+            if (!hasRoot) {
+                for (size_t i = 0; i < model.nodes.size(); ++i) {
+                    visitNode(static_cast<int32_t>(i), identity);
+                }
+            }
+        }
+
+        if (overallBox.isValid()) {
+            minPt = glm::vec3(
+                static_cast<float>(overallBox.min.x),
+                static_cast<float>(overallBox.min.y),
+                static_cast<float>(overallBox.min.z));
+            maxPt = glm::vec3(
+                static_cast<float>(overallBox.max.x),
+                static_cast<float>(overallBox.max.y),
+                static_cast<float>(overallBox.max.z));
+        } else {
             minPt = glm::vec3(0.0f);
             maxPt = glm::vec3(0.0f);
         }
@@ -380,11 +433,13 @@ namespace QuadtreePipeline {
         std::cout << "[Debug] Global Min: " << globalMin.x << ", " << globalMin.y << ", " << globalMin.z << std::endl;
         std::cout << "[Debug] Global Max: " << globalMax.x << ", " << globalMax.y << ", " << globalMax.z << std::endl;
 
+        // Switch to XZ Plane Quadtree (Assuming Y is Up/Height and is the smallest dimension)
+        // Or adaptively choose? For Architecture (Y-Up), XZ is usually the floor plan.
         float width = globalMax.x - globalMin.x;
-        float height = globalMax.y - globalMin.y;
-        float maxSize = std::max(width, height);
+        float depth = globalMax.z - globalMin.z; // Use Z for depth
+        float maxSize = std::max(width, depth);
         
-        std::cout << "[Debug] Quadtree Size: " << width << " x " << height << " (Max: " << maxSize << ")" << std::endl;
+        std::cout << "[Debug] Quadtree Plane: XZ. Size: " << width << " x " << depth << " (Max: " << maxSize << ")" << std::endl;
 
         // Add a small epsilon to width/height to ensure objects exactly on the max boundary are included
         // because the split logic uses [min, max) range.
@@ -394,11 +449,54 @@ namespace QuadtreePipeline {
         _root->level = 0;
         _root->x = 0;
         _root->y = 0;
+        // Quadtree covers X and Z. Y is fully included.
         _root->minBound = globalMin;
-        _root->maxBound = glm::vec3(globalMin.x + maxSize, globalMin.y + maxSize, globalMax.z);
+        _root->maxBound = glm::vec3(globalMin.x + maxSize, globalMax.y, globalMin.z + maxSize); 
         _root->objects = _sceneObjects; 
         
         recursiveSplit(_root.get());
+        
+        std::cout << "[QuadtreePipeline] Calculating tight bounds..." << std::endl;
+        calculateTightBounds(_root.get());
+    }
+
+    void Pipeline::calculateTightBounds(QuadtreeNode* node) {
+        // Initialize with inverted infinity
+        glm::vec3 minB(std::numeric_limits<float>::max());
+        glm::vec3 maxB(std::numeric_limits<float>::lowest());
+        bool hasContent = false;
+
+        // 1. Include own objects
+        for (const auto& obj : node->objects) {
+            minB = glm::min(minB, obj.minBound);
+            maxB = glm::max(maxB, obj.maxBound);
+            hasContent = true;
+        }
+
+        // 2. Include children bounds (Post-order)
+        for (const auto& child : node->children) {
+            calculateTightBounds(child.get());
+            
+            // If child has valid tight bounds, merge them
+            // Check if child actually has content (min < max)
+            if (child->tightMinBound.x <= child->tightMaxBound.x) {
+                minB = glm::min(minB, child->tightMinBound);
+                maxB = glm::max(maxB, child->tightMaxBound);
+                hasContent = true;
+            }
+        }
+
+        if (hasContent) {
+            node->tightMinBound = minB;
+            node->tightMaxBound = maxB;
+        } else {
+            // If empty, just use grid bounds or keep inverted (to indicate empty)
+            // For safety in JSON, let's fall back to grid bounds but maybe logged?
+            // Actually, empty nodes shouldn't be generated in JSON usually.
+            // But let's set to grid bounds to be safe.
+            node->tightMinBound = node->minBound;
+            node->tightMaxBound = node->maxBound;
+        }
     }
 
     void Pipeline::recursiveSplit(QuadtreeNode* node) {
@@ -409,34 +507,41 @@ namespace QuadtreePipeline {
             return;
         }
         
+        // Split on XZ plane
         float midX = (node->minBound.x + node->maxBound.x) * 0.5f;
-        float midY = (node->minBound.y + node->maxBound.y) * 0.5f;
+        float midZ = (node->minBound.z + node->maxBound.z) * 0.5f; // Split Z
         
         for (int i = 0; i < 4; i++) {
             auto child = std::make_unique<QuadtreeNode>();
             child->level = node->level + 1;
             child->x = node->x * 2 + (i % 2); 
             child->y = node->y * 2 + (i / 2); 
-            child->minBound.z = node->minBound.z;
-            child->maxBound.z = node->maxBound.z;
+            child->minBound.y = node->minBound.y; // Keep Y (Height) full
+            child->maxBound.y = node->maxBound.y;
             
-            if (i == 0) { // BL
+            // i=0: BL (minX, minZ)
+            // i=1: BR (midX, minZ)
+            // i=2: TL (minX, midZ)
+            // i=3: TR (midX, midZ)
+            
+            if (i == 0) { // Bottom-Left
                 child->minBound.x = node->minBound.x; child->maxBound.x = midX;
-                child->minBound.y = node->minBound.y; child->maxBound.y = midY;
-            } else if (i == 1) { // BR
+                child->minBound.z = node->minBound.z; child->maxBound.z = midZ;
+            } else if (i == 1) { // Bottom-Right
                 child->minBound.x = midX;             child->maxBound.x = node->maxBound.x;
-                child->minBound.y = node->minBound.y; child->maxBound.y = midY;
-            } else if (i == 2) { // TL
+                child->minBound.z = node->minBound.z; child->maxBound.z = midZ;
+            } else if (i == 2) { // Top-Left
                 child->minBound.x = node->minBound.x; child->maxBound.x = midX;
-                child->minBound.y = midY;             child->maxBound.y = node->maxBound.y;
-            } else if (i == 3) { // TR
+                child->minBound.z = midZ;             child->maxBound.z = node->maxBound.z;
+            } else if (i == 3) { // Top-Right
                 child->minBound.x = midX;             child->maxBound.x = node->maxBound.x;
-                child->minBound.y = midY;             child->maxBound.y = node->maxBound.y;
+                child->minBound.z = midZ;             child->maxBound.z = node->maxBound.z;
             }
             
             for (const auto& obj : node->objects) {
+                // Check X and Z center
                 if (obj.center.x >= child->minBound.x && obj.center.x < child->maxBound.x &&
-                    obj.center.y >= child->minBound.y && obj.center.y < child->maxBound.y) {
+                    obj.center.z >= child->minBound.z && obj.center.z < child->maxBound.z) {
                     child->objects.push_back(obj);
                 }
             }
@@ -811,16 +916,27 @@ namespace QuadtreePipeline {
         
         std::string innerSp = writeBraces ? std::string(indent + 2, ' ') : sp;
         
-        glm::vec3 min = node->minBound;
-        glm::vec3 max = node->maxBound;
+        // Use Tight Bounds for display
+        glm::vec3 min = node->tightMinBound;
+        glm::vec3 max = node->tightMaxBound;
         glm::vec3 center = (min + max) * 0.5f;
         glm::vec3 scale = (max - min) * 0.5f;
         
+        std::vector<double> boundingBox = {
+            center.x, center.y, center.z,
+            scale.x, 0.0, 0.0,
+            0.0, scale.y, 0.0,
+            0.0, 0.0, scale.z
+        };
+        // 将包围盒从 glTF 的 Y-up 转为 Cesium 的 Z-up
+        GltfInstancing::changeGLBToCesiumAxis(boundingBox);
+
         json << innerSp << "\"boundingVolume\": {" << std::endl;
-        json << innerSp << "  \"box\": [" << center.x << ", " << center.y << ", " << center.z << ", " 
-             << scale.x << ", 0, 0, " 
-             << "0, " << scale.y << ", 0, " 
-             << "0, 0, " << scale.z << "]" << std::endl;
+        json << innerSp << "  \"box\": [" 
+             << boundingBox[0] << ", " << boundingBox[1] << ", " << boundingBox[2] << ", "
+             << boundingBox[3] << ", " << boundingBox[4] << ", " << boundingBox[5] << ", "
+             << boundingBox[6] << ", " << boundingBox[7] << ", " << boundingBox[8] << ", "
+             << boundingBox[9] << ", " << boundingBox[10] << ", " << boundingBox[11] << "]" << std::endl;
         json << innerSp << "}," << std::endl;
         
         double diagonal = glm::length(max - min);
