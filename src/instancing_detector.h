@@ -36,7 +36,8 @@ namespace GltfInstancing {
         InstancingDetector(double tolerance, 
                            const std::set<std::string>& skipAttributes = {},
                            double normalSpecificTolerance = 0.0,
-                           int instanceLimit = 0);
+                           int instanceLimit = 0,
+                           bool allowNonUniformScaleInstancing = false);
 
         // Main function to detect instancing opportunities
         InstancingDetectionResult detect(const std::vector<LoadedGltfModel>& loadedModels);
@@ -48,6 +49,7 @@ namespace GltfInstancing {
         const std::set<std::string> attributesToSkipDataHashInToleranceMode;
         double normalTolerance; // Tolerance for comparing NORMAL attributes, if geometryTolerance > 0 and NORMAL is not skipped
         int _instanceLimit;
+        bool _allowNonUniformScaleInstancing;
 
         // Calculates a signature for a glTF mesh primitive based on its geometry and material.
         // This signature is used to determine if two primitives are identical.

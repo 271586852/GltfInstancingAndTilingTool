@@ -17,6 +17,7 @@ struct ToolConfiguration {
     bool meshSegmentation = false;
     std::string csvDirectory;
     bool csvDirectorySet = false;
+    bool allowNonUniformScaleInstancing = false;
 
     // --- LOD Configuration ---
     bool enableLodGeneration = false;

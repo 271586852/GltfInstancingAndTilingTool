@@ -1,4 +1,4 @@
-#include "QuadtreePipeline.h"
+#include "HLODPipeline.h"
 #include "glb_reader.h"
 #include "glb_writer.h"
 #include "utilities.h"
@@ -19,7 +19,7 @@
 #include <CesiumGltfReader/GltfReader.h>
 #include <CesiumGltfWriter/GltfWriter.h>
 
-namespace QuadtreePipeline {
+namespace HLOD {
 
     // Helper: Unpack EXT_mesh_gpu_instancing into real nodes
     // This allows subsequent simplification to work on geometry without losing instance transforms
@@ -344,16 +344,16 @@ namespace QuadtreePipeline {
     }
 
     void Pipeline::run() {
-        std::cout << "[QuadtreePipeline] Starting Bottom-Up HLOD Pipeline..." << std::endl;
+        std::cout << "[HLOD] Starting Bottom-Up HLOD Pipeline..." << std::endl;
         _stats.clear(); // Reset stats
         
         scanInputDirectory();
         if (_sceneObjects.empty()) {
-            std::cerr << "[QuadtreePipeline] No objects found in input directory." << std::endl;
+            std::cerr << "[HLOD] No objects found in input directory." << std::endl;
             return;
         }
 
-        buildQuadtree();
+        buildHlodTree();
         
         std::filesystem::create_directories(_config.outputDirectory + "/tiles");
         
@@ -361,11 +361,11 @@ namespace QuadtreePipeline {
         generateTilesetJson();
         writeAnalysisReport(); // Generate report
         
-        std::cout << "[QuadtreePipeline] Pipeline completed." << std::endl;
+        std::cout << "[HLOD] Pipeline completed." << std::endl;
     }
 
     void Pipeline::scanInputDirectory() {
-        std::cout << "[QuadtreePipeline] Scanning input: " << _config.inputDirectory << std::endl;
+        std::cout << "[HLOD] Scanning input: " << _config.inputDirectory << std::endl;
         int idCounter = 0;
         
         CesiumGltfReader::GltfReader reader;
@@ -416,11 +416,11 @@ namespace QuadtreePipeline {
                 }
             }
         }
-        std::cout << "[QuadtreePipeline] Found " << _sceneObjects.size() << " objects." << std::endl;
+        std::cout << "[HLOD] Found " << _sceneObjects.size() << " objects." << std::endl;
     }
 
-    void Pipeline::buildQuadtree() {
-        std::cout << "[QuadtreePipeline] Building Quadtree..." << std::endl;
+    void Pipeline::buildHlodTree() {
+        std::cout << "[HLOD] Building HLOD tree..." << std::endl;
         
         glm::vec3 globalMin(std::numeric_limits<float>::max());
         glm::vec3 globalMax(std::numeric_limits<float>::lowest());
@@ -439,13 +439,13 @@ namespace QuadtreePipeline {
         float depth = globalMax.z - globalMin.z; // Use Z for depth
         float maxSize = std::max(width, depth);
         
-        std::cout << "[Debug] Quadtree Plane: XZ. Size: " << width << " x " << depth << " (Max: " << maxSize << ")" << std::endl;
+        std::cout << "[Debug] HLOD Plane: XZ. Size: " << width << " x " << depth << " (Max: " << maxSize << ")" << std::endl;
 
         // Add a small epsilon to width/height to ensure objects exactly on the max boundary are included
         // because the split logic uses [min, max) range.
-        maxSize += 0.01f; 
+        // maxSize += 0.01f; 
 
-        _root = std::make_unique<QuadtreeNode>();
+        _root = std::make_unique<HLODNode>();
         _root->level = 0;
         _root->x = 0;
         _root->y = 0;
@@ -456,11 +456,11 @@ namespace QuadtreePipeline {
         
         recursiveSplit(_root.get());
         
-        std::cout << "[QuadtreePipeline] Calculating tight bounds..." << std::endl;
+        std::cout << "[HLOD] Calculating tight bounds..." << std::endl;
         calculateTightBounds(_root.get());
     }
 
-    void Pipeline::calculateTightBounds(QuadtreeNode* node) {
+    void Pipeline::calculateTightBounds(HLODNode* node) {
         // Initialize with inverted infinity
         glm::vec3 minB(std::numeric_limits<float>::max());
         glm::vec3 maxB(std::numeric_limits<float>::lowest());
@@ -499,7 +499,7 @@ namespace QuadtreePipeline {
         }
     }
 
-    void Pipeline::recursiveSplit(QuadtreeNode* node) {
+    void Pipeline::recursiveSplit(HLODNode* node) {
         const int MAX_OBJECTS = _config.quadtreeMaxObjectsPerTile; 
         const int MAX_DEPTH = _config.quadtreeMaxDepth;    
         
@@ -512,7 +512,7 @@ namespace QuadtreePipeline {
         float midZ = (node->minBound.z + node->maxBound.z) * 0.5f; // Split Z
         
         for (int i = 0; i < 4; i++) {
-            auto child = std::make_unique<QuadtreeNode>();
+            auto child = std::make_unique<HLODNode>();
             child->level = node->level + 1;
             child->x = node->x * 2 + (i % 2); 
             child->y = node->y * 2 + (i / 2); 
@@ -581,14 +581,14 @@ namespace QuadtreePipeline {
     // --- Bottom-Up Generation ---
 
     void Pipeline::generateContentBottomUp() {
-        std::cout << "[QuadtreePipeline] Generating content Bottom-Up..." << std::endl;
+        std::cout << "[HLOD] Generating content Bottom-Up..." << std::endl;
         
-        std::vector<QuadtreeNode*> leaves;
-        std::vector<QuadtreeNode*> allNodes;
+        std::vector<HLODNode*> leaves;
+        std::vector<HLODNode*> allNodes;
         
-        std::vector<QuadtreeNode*> stack = {_root.get()};
+        std::vector<HLODNode*> stack = {_root.get()};
         while(!stack.empty()) {
-            QuadtreeNode* n = stack.back();
+            HLODNode* n = stack.back();
             stack.pop_back();
             allNodes.push_back(n);
             
@@ -599,7 +599,7 @@ namespace QuadtreePipeline {
             }
         }
         
-        std::sort(allNodes.begin(), allNodes.end(), [](const QuadtreeNode* a, const QuadtreeNode* b){
+        std::sort(allNodes.begin(), allNodes.end(), [](const HLODNode* a, const HLODNode* b){
             return a->level > b->level;
         });
         
@@ -619,7 +619,7 @@ namespace QuadtreePipeline {
         }
     }
 
-    bool Pipeline::generateLeafTile(QuadtreeNode* node) {
+    bool Pipeline::generateLeafTile(HLODNode* node) {
         if (node->objects.empty()) return false;
         
         std::string filename = "T" + std::to_string(node->level) + "_" + 
@@ -695,7 +695,7 @@ namespace QuadtreePipeline {
         return false;
     }
 
-    bool Pipeline::processParentTile(QuadtreeNode* node) {
+    bool Pipeline::processParentTile(HLODNode* node) {
         std::vector<std::filesystem::path> childPaths;
         for (const auto& child : node->children) {
             if (!child->tileFilename.empty()) {
@@ -868,7 +868,7 @@ namespace QuadtreePipeline {
         }
         
         csv.close();
-        std::cout << "[QuadtreePipeline] Analysis report written to: " << reportPath << std::endl;
+        std::cout << "[HLOD] Analysis report written to: " << reportPath << std::endl;
     }
 
     TileRole Pipeline::getRoleForLevel(int level) const {
@@ -910,7 +910,7 @@ namespace QuadtreePipeline {
     }
 
     // Adjusted to optionally write the surrounding braces
-    void Pipeline::writeTilesetJsonRecursive(std::ofstream& json, const QuadtreeNode* node, int indent, bool writeBraces) {
+    void Pipeline::writeTilesetJsonRecursive(std::ofstream& json, const HLODNode* node, int indent, bool writeBraces) {
         std::string sp(indent, ' ');
         if (writeBraces) json << sp << "{" << std::endl;
         

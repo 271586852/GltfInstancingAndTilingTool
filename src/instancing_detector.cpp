@@ -295,11 +295,13 @@ namespace GltfInstancing {
     InstancingDetector::InstancingDetector(double tolerance, 
                                            const std::set<std::string>& skipAttributes,
                                            double normalSpecificTolerance,
-                                           int instanceLimit)
+                                           int instanceLimit,
+                                           bool allowNonUniformScaleInstancing)
         : geometryTolerance(tolerance), 
           attributesToSkipDataHashInToleranceMode(skipAttributes),
           normalTolerance(normalSpecificTolerance),
-          _instanceLimit(instanceLimit) {
+          _instanceLimit(instanceLimit),
+          _allowNonUniformScaleInstancing(allowNonUniformScaleInstancing) {
         if (tolerance > 0.0) {
             logMessage("InstancingDetector initialized with geometry tolerance: " + std::to_string(tolerance));
             if (normalTolerance > 0.0 && !attributesToSkipDataHashInToleranceMode.count("NORMAL")) {
@@ -327,6 +329,7 @@ namespace GltfInstancing {
             logMessage("InstancingDetector initialized with exact matching (geometry tolerance <= 0.0).");
         }
         logMessage("Instance limit for forming groups: " + std::to_string(_instanceLimit));
+        logMessage(std::string("Allow non-uniform scale instancing: ") + (_allowNonUniformScaleInstancing ? "true" : "false"));
     }
 
     // Helper to hash binary data (e.g., from accessors)
@@ -701,6 +704,7 @@ namespace GltfInstancing {
                                     group.representativeMeshIndexInModel = node.mesh;
                                     group.meshSignature = baseMeshSignature;
                                     group.representativeMeshName = mesh.name;
+                                    group.representativeMeshBoundingBox = GltfInstancing::getMeshBoundingBox(loadedGltf.model, mesh);
                                     if (geometryTolerance > 1e-9) { // Tolerance mode: compute and store representative bounding boxes
                                         for (const auto& prim : mesh.primitives) {
                                             group.representativePrimitiveBoundingBoxes.push_back(GltfInstancing::getPrimitiveBoundingBox(loadedGltf.model, prim));
@@ -796,6 +800,7 @@ namespace GltfInstancing {
                         group.representativeMeshIndexInModel = node.mesh;
                         group.meshSignature = signature;
                         group.representativeMeshName = mesh.name; 
+                        group.representativeMeshBoundingBox = GltfInstancing::getMeshBoundingBox(loadedGltf.model, mesh);
                     }
                     group.instances.push_back(instanceInfo);
                     } else { // Tolerance-based matching mode
@@ -840,6 +845,42 @@ namespace GltfInstancing {
                                          logMessage("    Mesh " + mesh.name + ": Added to existing group (Signature: " + std::to_string(signature) + ") based on BBox tolerance.");
                                     }
                                 }
+                                if (!allPrimitivesSimilar && _allowNonUniformScaleInstancing) {
+                                    // Try normalized shape comparison to allow non-uniform scale differences.
+                                    BoundingBox currentMeshBox = GltfInstancing::getMeshBoundingBox(loadedGltf.model, mesh);
+                                    glm::dvec3 repMeshExt = existingGroup.representativeMeshBoundingBox.max - existingGroup.representativeMeshBoundingBox.min;
+                                    glm::dvec3 curMeshExt = currentMeshBox.max - currentMeshBox.min;
+
+                                    bool allPrimitivesNormalizedSimilar = true;
+                                    for (size_t i = 0; i < mesh.primitives.size(); ++i) {
+                                        if (!GltfInstancing::areBoundingBoxesSimilarRelative(
+                                                existingGroup.representativePrimitiveBoundingBoxes[i],
+                                                currentPrimitiveBoundingBoxes[i],
+                                                repMeshExt,
+                                                curMeshExt,
+                                                geometryTolerance)) {
+                                            allPrimitivesNormalizedSimilar = false;
+                                            break;
+                                        }
+                                    }
+
+                                    if (allPrimitivesNormalizedSimilar) {
+                                        const double eps = 1e-12;
+                                        if (repMeshExt.x > eps && repMeshExt.y > eps && repMeshExt.z > eps) {
+                                            glm::dvec3 nonUniformScale(
+                                                curMeshExt.x / repMeshExt.x,
+                                                curMeshExt.y / repMeshExt.y,
+                                                curMeshExt.z / repMeshExt.z
+                                            );
+                                            instanceInfo.transform.scale *= nonUniformScale;
+                                            existingGroup.instances.push_back(instanceInfo);
+                                            foundMatchingGroup = true;
+                                            if (GltfInstancing::TARGET_MESH_NAMES.count(mesh.name)) {
+                                                logMessage("    Mesh " + mesh.name + ": Added to existing group with normalized shape match. Applied non-uniform scale.");
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -855,6 +896,7 @@ namespace GltfInstancing {
                                 newGroup.representativeMeshIndexInModel = node.mesh;
                                 newGroup.meshSignature = signature;
                                 newGroup.representativeMeshName = mesh.name;
+                                newGroup.representativeMeshBoundingBox = GltfInstancing::getMeshBoundingBox(loadedGltf.model, mesh);
                                 for (const auto& prim : mesh.primitives) {
                                     newGroup.representativePrimitiveBoundingBoxes.push_back(GltfInstancing::getPrimitiveBoundingBox(loadedGltf.model, prim));
                                 }

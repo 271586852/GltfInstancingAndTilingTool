@@ -628,5 +628,31 @@ namespace GltfInstancing {
 
         return true;
     }
+
+    bool areBoundingBoxesSimilarRelative(const BoundingBox& bb1, const BoundingBox& bb2, const glm::dvec3& baseExtents1, const glm::dvec3& baseExtents2, double tolerance) {
+        if (!bb1.isValid() || !bb2.isValid()) {
+            return false;
+        }
+
+        glm::dvec3 ext1 = bb1.max - bb1.min;
+        glm::dvec3 ext2 = bb2.max - bb2.min;
+
+        const double eps = 1e-12;
+        if (baseExtents1.x <= eps || baseExtents1.y <= eps || baseExtents1.z <= eps ||
+            baseExtents2.x <= eps || baseExtents2.y <= eps || baseExtents2.z <= eps) {
+            return false;
+        }
+
+        glm::dvec3 n1 = ext1 / baseExtents1;
+        glm::dvec3 n2 = ext2 / baseExtents2;
+
+        if (std::abs(n1.x - n2.x) > tolerance ||
+            std::abs(n1.y - n2.y) > tolerance ||
+            std::abs(n1.z - n2.z) > tolerance) {
+            return false;
+        }
+
+        return true;
+    }
 } // namespace GltfInstancing
 // Refreshed to fix caching

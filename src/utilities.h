@@ -114,6 +114,7 @@ namespace GltfInstancing {
         size_t meshSignature;
         std::vector<MeshInstanceInfo> instances;
         std::vector<BoundingBox> representativePrimitiveBoundingBoxes;
+        BoundingBox representativeMeshBoundingBox;
     };
 
     struct NonInstancedMeshInfo {
@@ -137,6 +138,7 @@ namespace GltfInstancing {
     BoundingBox getMeshBoundingBox(const CesiumGltf::Model& model, const CesiumGltf::Mesh& mesh);
 
     bool areBoundingBoxesSimilar(const BoundingBox& bb1, const BoundingBox& bb2, double tolerance);
+    bool areBoundingBoxesSimilarRelative(const BoundingBox& bb1, const BoundingBox& bb2, const glm::dvec3& baseExtents1, const glm::dvec3& baseExtents2, double tolerance);
 
 } // namespace GltfInstancing
 #endif // UTILITIES_H

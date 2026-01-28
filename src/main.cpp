@@ -130,6 +130,15 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 } catch (const std::exception& e) {
                     GltfInstancing::logWarning("Invalid value for 'instance_limit' in config file (line " + std::to_string(lineNumber) + "): " + value + ". Error: " + e.what());
                 }
+            } else if (key == "allow_non_uniform_scale_instancing") {
+                std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+                if (value == "true" || value == "1" || value == "yes") {
+                    config.allowNonUniformScaleInstancing = true;
+                } else if (value == "false" || value == "0" || value == "no") {
+                    config.allowNonUniformScaleInstancing = false;
+                } else {
+                    GltfInstancing::logWarning("Invalid boolean value for 'allow_non_uniform_scale_instancing' in config file (line " + std::to_string(lineNumber) + "): " + value);
+                }
             } else if (key == "mesh_segmentation") {
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") {
@@ -886,7 +895,7 @@ int main(int argc, char* argv[]) {
     GltfInstancing::logInfo("Successfully loaded " + std::to_string(loadedModels.size()) + " initial GLB model(s).");
 
     GltfInstancing::logInfo("Stage 1: Detecting instancing opportunities...");
-    GltfInstancing::InstancingDetector detector(config.geometryTolerance, config.attributesToSkipDataHash, config.normalTolerance, config.instanceLimit);
+    GltfInstancing::InstancingDetector detector(config.geometryTolerance, config.attributesToSkipDataHash, config.normalTolerance, config.instanceLimit, config.allowNonUniformScaleInstancing);
     GltfInstancing::InstancingDetectionResult detectionResult = detector.detect(loadedModels);
 
     GltfInstancing::GlbWriter glbWriter;
@@ -1015,7 +1024,7 @@ int main(int argc, char* argv[]) {
                  std::vector<GltfInstancing::TilesetNode> finalNodes;
                  GltfInstancing::GlbReader lodReader;
                  
-                 GltfInstancing::InstancingDetector lodDetector(config.geometryTolerance, config.attributesToSkipDataHash, config.normalTolerance, config.instanceLimit);
+                 GltfInstancing::InstancingDetector lodDetector(config.geometryTolerance, config.attributesToSkipDataHash, config.normalTolerance, config.instanceLimit, config.allowNonUniformScaleInstancing);
 
                  for (const auto& levelInfo : lodLevels) {
                      GltfInstancing::logInfo("Processing Level " + std::to_string(levelInfo.level) + " for instancing...");
