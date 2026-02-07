@@ -28,6 +28,19 @@ struct ToolConfiguration {
     double lod4SizeTolerance = 0.05;
     double lod3AspectRatioTolerance = 0.20;
     std::string semanticDataPath;
+    
+    // --- HLOD Instancing Detection Parameters (Independent from Stage 1) ---
+    // These parameters are used for instancing detection in HLOD/LOD generation pipelines
+    // If not set, they will default to Stage 1 parameters
+    double hlodGeometryTolerance = -1.0; // -1.0 means "use Stage 1 value"
+    double hlodNormalTolerance = -1.0;   // -1.0 means "use Stage 1 value"
+    std::set<std::string> hlodAttributesToSkipDataHash;
+    int hlodInstanceLimit = -1;          // -1 means "use Stage 1 value"
+    bool hlodAllowNonUniformScaleInstancing = false;
+    bool hlodGeometryToleranceSet = false;
+    bool hlodNormalToleranceSet = false;
+    bool hlodAttributesToSkipDataHashSet = false;
+    bool hlodInstanceLimitSet = false;
 
     // --- Non-Instanced LOD Configuration ---
     bool enableNonInstancedLodGeneration = false;

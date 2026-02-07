@@ -201,6 +201,49 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
             } else if (key == "quadtree_max_objects_per_tile") {
                 try { config.quadtreeMaxObjectsPerTile = std::stoi(value); } catch(...) {}
             }
+            // --- HLOD Instancing Detection Parameters ---
+            else if (key == "hlod_geometry_tolerance" || key == "hlod_tolerance") {
+                try {
+                    config.hlodGeometryTolerance = std::stod(value);
+                    config.hlodGeometryToleranceSet = true;
+                } catch (const std::exception& e) {
+                    GltfInstancing::logWarning("Invalid value for '" + key + "' in config file (line " + std::to_string(lineNumber) + "): " + value + ". Error: " + e.what());
+                }
+            } else if (key == "hlod_normal_tolerance") {
+                try {
+                    config.hlodNormalTolerance = std::stod(value);
+                    if (config.hlodNormalTolerance < 0.0) {
+                        GltfInstancing::logWarning("Negative hlod_normal_tolerance in config (line " + std::to_string(lineNumber) + ") adjusted to 0.0.");
+                        config.hlodNormalTolerance = 0.0;
+                    }
+                    config.hlodNormalToleranceSet = true;
+                } catch (const std::exception& e) {
+                    GltfInstancing::logWarning("Invalid value for 'hlod_normal_tolerance' in config file (line " + std::to_string(lineNumber) + "): " + value + ". Error: " + e.what());
+                }
+            } else if (key == "hlod_skip_attribute_data_hash") {
+                config.hlodAttributesToSkipDataHash = splitAndTrim(value, ',');
+                config.hlodAttributesToSkipDataHashSet = true;
+            } else if (key == "hlod_instance_limit") {
+                try {
+                    config.hlodInstanceLimit = std::stoi(value);
+                    if (config.hlodInstanceLimit < 1) {
+                        GltfInstancing::logWarning("Invalid value for 'hlod_instance_limit' (must be >= 1) in config file (line " + std::to_string(lineNumber) + "): " + value + ". Using default 2.");
+                        config.hlodInstanceLimit = 2;
+                    }
+                    config.hlodInstanceLimitSet = true;
+                } catch (const std::exception& e) {
+                    GltfInstancing::logWarning("Invalid value for 'hlod_instance_limit' in config file (line " + std::to_string(lineNumber) + "): " + value + ". Error: " + e.what());
+                }
+            } else if (key == "hlod_allow_non_uniform_scale_instancing") {
+                std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+                if (value == "true" || value == "1" || value == "yes") {
+                    config.hlodAllowNonUniformScaleInstancing = true;
+                } else if (value == "false" || value == "0" || value == "no") {
+                    config.hlodAllowNonUniformScaleInstancing = false;
+                } else {
+                    GltfInstancing::logWarning("Invalid boolean value for 'hlod_allow_non_uniform_scale_instancing' in config file (line " + std::to_string(lineNumber) + "): " + value);
+                }
+            }
             else {
                 GltfInstancing::logWarning("Unknown configuration key in config file (line " + std::to_string(lineNumber) + "): " + key);
             }
@@ -234,6 +277,16 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("  --enable-quadtree:                   Enable Quadtree HLOD pipeline. Default: false.");
     GltfInstancing::logInfo("  --quadtree-max-depth <value>:        Max depth for Quadtree. Default: 6.");
     GltfInstancing::logInfo("  --quadtree-max-objs <value>:         Max objects per tile for Quadtree splitting. Default: 50.");
+    GltfInstancing::logInfo("");
+    GltfInstancing::logInfo("HLOD Instancing Detection Parameters (Independent from Stage 1):");
+    GltfInstancing::logInfo("  --hlod-tolerance <value>:             Geometric tolerance for HLOD instancing detection.");
+    GltfInstancing::logInfo("                                       If not set, uses Stage 1 tolerance.");
+    GltfInstancing::logInfo("  --hlod-normal-tolerance <value>:    Normal tolerance for HLOD instancing detection.");
+    GltfInstancing::logInfo("                                       If not set, uses Stage 1 normal tolerance.");
+    GltfInstancing::logInfo("  --hlod-skip-attribute-data-hash <attrs>: Attributes to skip for HLOD detection.");
+    GltfInstancing::logInfo("                                       If not set, uses Stage 1 attributes.");
+    GltfInstancing::logInfo("  --hlod-instance-limit <value>:        Instance limit for HLOD detection. Default: uses Stage 1 limit.");
+    GltfInstancing::logInfo("  --hlod-allow-non-uniform-scale-instancing: Allow non-uniform scale for HLOD.");
 }
 
 struct CsvEntry {
@@ -409,6 +462,41 @@ struct LodStats {
     size_t totalInstances;
     size_t totalVertices;
 };
+
+// Helper function to get HLOD instancing detection parameters
+// If HLOD-specific parameters are not set, use Stage 1 parameters
+struct HlodInstancingParams {
+    double geometryTolerance;
+    double normalTolerance;
+    std::set<std::string> attributesToSkipDataHash;
+    int instanceLimit;
+    bool allowNonUniformScaleInstancing;
+};
+
+HlodInstancingParams getHlodInstancingParams(const ToolConfiguration& config) {
+    HlodInstancingParams params;
+    
+    // Geometry tolerance: use HLOD value if set, otherwise use Stage 1 value
+    params.geometryTolerance = config.hlodGeometryToleranceSet ? 
+        config.hlodGeometryTolerance : config.geometryTolerance;
+    
+    // Normal tolerance: use HLOD value if set, otherwise use Stage 1 value
+    params.normalTolerance = config.hlodNormalToleranceSet ? 
+        config.hlodNormalTolerance : config.normalTolerance;
+    
+    // Attributes to skip: use HLOD value if set, otherwise use Stage 1 value
+    params.attributesToSkipDataHash = config.hlodAttributesToSkipDataHashSet ? 
+        config.hlodAttributesToSkipDataHash : config.attributesToSkipDataHash;
+    
+    // Instance limit: use HLOD value if set, otherwise use Stage 1 value
+    params.instanceLimit = config.hlodInstanceLimitSet ? 
+        config.hlodInstanceLimit : config.instanceLimit;
+    
+    // Allow non-uniform scale: use HLOD value (always has a default)
+    params.allowNonUniformScaleInstancing = config.hlodAllowNonUniformScaleInstancing;
+    
+    return params;
+}
 
 // Helper to write LOD analysis report
 void writeLodAnalysisCsv(const ToolConfiguration& config, 
@@ -767,6 +855,65 @@ int main(int argc, char* argv[]) {
                     GltfInstancing::logWarning("Invalid value for --quadtree-max-objs. Using default.");
                 }
             }
+        } else if (arg == "--hlod-tolerance" || arg == "--hlod-geometry-tolerance") {
+            if (argIndex + 1 < argc) {
+                try {
+                    config.hlodGeometryTolerance = std::stod(argv[++argIndex]);
+                    config.hlodGeometryToleranceSet = true;
+                    GltfInstancing::logDebug("Command-line override: Using HLOD geometry tolerance: " + std::to_string(config.hlodGeometryTolerance));
+                } catch (const std::exception& e) {
+                    GltfInstancing::logError("Invalid value for --hlod-tolerance (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
+                }
+            } else {
+                GltfInstancing::logError("--hlod-tolerance option (CLI) requires a value."); printUsage(argv[0]); return 1;
+            }
+        } else if (arg == "--hlod-normal-tolerance") {
+            if (argIndex + 1 < argc) {
+                try {
+                    config.hlodNormalTolerance = std::stod(argv[++argIndex]);
+                    if (config.hlodNormalTolerance < 0.0) {
+                        GltfInstancing::logWarning("WARNING (CLI): HLOD normal tolerance cannot be negative. Using 0.0.");
+                        config.hlodNormalTolerance = 0.0;
+                    }
+                    config.hlodNormalToleranceSet = true;
+                    GltfInstancing::logDebug("Command-line override: Using HLOD normal tolerance: " + std::to_string(config.hlodNormalTolerance));
+                } catch (const std::exception& e) {
+                    GltfInstancing::logError("Invalid value for --hlod-normal-tolerance (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
+                }
+            } else {
+                GltfInstancing::logError("--hlod-normal-tolerance option (CLI) requires a value."); printUsage(argv[0]); return 1;
+            }
+        } else if (arg == "--hlod-skip-attribute-data-hash") {
+            if (argIndex + 1 < argc) {
+                config.hlodAttributesToSkipDataHash = splitAndTrim(argv[++argIndex], ',');
+                config.hlodAttributesToSkipDataHashSet = true;
+                if (!config.hlodAttributesToSkipDataHash.empty()) {
+                    std::string attrsLogged = "Command-line override: HLOD tolerance mode will skip data hashing for attributes: ";
+                    for (const auto& attr : config.hlodAttributesToSkipDataHash) attrsLogged += attr + " ";
+                    GltfInstancing::logDebug(attrsLogged);
+                }
+            } else {
+                GltfInstancing::logError("--hlod-skip-attribute-data-hash option (CLI) requires a comma-separated list."); printUsage(argv[0]); return 1;
+            }
+        } else if (arg == "--hlod-instance-limit") {
+            if (argIndex + 1 < argc) {
+                try {
+                    config.hlodInstanceLimit = std::stoi(argv[++argIndex]);
+                    if (config.hlodInstanceLimit < 1) {
+                        GltfInstancing::logWarning("WARNING (CLI): HLOD instance limit must be >= 1. Using default 2.");
+                        config.hlodInstanceLimit = 2;
+                    }
+                    config.hlodInstanceLimitSet = true;
+                    GltfInstancing::logDebug("Command-line override: Using HLOD instance limit: " + std::to_string(config.hlodInstanceLimit));
+                } catch (const std::exception& e) {
+                    GltfInstancing::logError("Invalid value for --hlod-instance-limit (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
+                }
+            } else {
+                GltfInstancing::logError("--hlod-instance-limit option (CLI) requires a value."); printUsage(argv[0]); return 1;
+            }
+        } else if (arg == "--hlod-allow-non-uniform-scale-instancing") {
+            config.hlodAllowNonUniformScaleInstancing = true;
+            GltfInstancing::logDebug("Command-line override: HLOD allow non-uniform scale instancing enabled.");
         } else { // An unknown option
             GltfInstancing::logError("Unexpected command-line argument: " + arg);
             printUsage(argv[0]);
@@ -895,6 +1042,7 @@ int main(int argc, char* argv[]) {
     GltfInstancing::logInfo("Successfully loaded " + std::to_string(loadedModels.size()) + " initial GLB model(s).");
 
     GltfInstancing::logInfo("Stage 1: Detecting instancing opportunities...");
+    // Stage 1 uses Stage 1 parameters (config.geometryTolerance, etc.)
     GltfInstancing::InstancingDetector detector(config.geometryTolerance, config.attributesToSkipDataHash, config.normalTolerance, config.instanceLimit, config.allowNonUniformScaleInstancing);
     GltfInstancing::InstancingDetectionResult detectionResult = detector.detect(loadedModels);
 
@@ -1021,10 +1169,21 @@ int main(int argc, char* argv[]) {
                  std::filesystem::path instancedOutputDir = lodOutputDir / "instanced_lods";
                  std::filesystem::create_directories(instancedOutputDir);
 
-                 std::vector<GltfInstancing::TilesetNode> finalNodes;
-                 GltfInstancing::GlbReader lodReader;
-                 
-                 GltfInstancing::InstancingDetector lodDetector(config.geometryTolerance, config.attributesToSkipDataHash, config.normalTolerance, config.instanceLimit, config.allowNonUniformScaleInstancing);
+                std::vector<GltfInstancing::TilesetNode> finalNodes;
+                GltfInstancing::GlbReader lodReader;
+                
+                // Use HLOD-specific instancing detection parameters
+                auto hlodParams = getHlodInstancingParams(config);
+                GltfInstancing::InstancingDetector lodDetector(
+                    hlodParams.geometryTolerance, 
+                    hlodParams.attributesToSkipDataHash, 
+                    hlodParams.normalTolerance, 
+                    hlodParams.instanceLimit, 
+                    hlodParams.allowNonUniformScaleInstancing
+                );
+                GltfInstancing::logInfo("Using HLOD instancing detection parameters: tolerance=" + 
+                    std::to_string(hlodParams.geometryTolerance) + ", instance_limit=" + 
+                    std::to_string(hlodParams.instanceLimit));
 
                  for (const auto& levelInfo : lodLevels) {
                      GltfInstancing::logInfo("Processing Level " + std::to_string(levelInfo.level) + " for instancing...");

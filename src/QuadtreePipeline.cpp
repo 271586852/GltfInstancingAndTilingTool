@@ -797,7 +797,19 @@ namespace QuadtreePipeline {
         
         std::vector<GltfInstancing::LoadedGltfModel> models = { std::move(loadedForDet) };
         
-        GltfInstancing::InstancingDetector detector(_config.geometryTolerance, _config.attributesToSkipDataHash, _config.normalTolerance, _config.instanceLimit, _config.allowNonUniformScaleInstancing);
+        // Use HLOD-specific instancing detection parameters
+        // If HLOD parameters are not set, use Stage 1 parameters
+        double hlodGeometryTolerance = _config.hlodGeometryToleranceSet ? 
+            _config.hlodGeometryTolerance : _config.geometryTolerance;
+        double hlodNormalTolerance = _config.hlodNormalToleranceSet ? 
+            _config.hlodNormalTolerance : _config.normalTolerance;
+        std::set<std::string> hlodAttributesToSkip = _config.hlodAttributesToSkipDataHashSet ? 
+            _config.hlodAttributesToSkipDataHash : _config.attributesToSkipDataHash;
+        int hlodInstanceLimit = _config.hlodInstanceLimitSet ? 
+            _config.hlodInstanceLimit : _config.instanceLimit;
+        bool hlodAllowNonUniformScale = _config.hlodAllowNonUniformScaleInstancing;
+        
+        GltfInstancing::InstancingDetector detector(hlodGeometryTolerance, hlodAttributesToSkip, hlodNormalTolerance, hlodInstanceLimit, hlodAllowNonUniformScale);
         auto result = detector.detect(models);
         
         GltfInstancing::GlbWriter writer;
