@@ -53,12 +53,19 @@ struct ToolConfiguration {
     bool enableQuadtree = false;
     int quadtreeMaxDepth = 6;
     int quadtreeMaxObjectsPerTile = 50;
-    
+
+    // --- Experiment Mode Configuration ---
+    bool enableExperimentMode = false;
+    bool useSymbolicLinks = false;  // 如果为true，使用符号链接节省空间；如果为false，复制文件
+    std::string experiment1Name = "experiment1_baseline_comparison";
+    std::string experiment2Name = "experiment2_lod_comparison";
+    std::string experiment3Name = "experiment3_mixed_hlod";
+
     // Default transform to place the model on Earth (User provided)
     std::vector<double> rootTransform = {
-        -0.9023136427, 0.4310860309, 0.0, 0.0, 
-        0.3731804153, 0.7899661139, 0.4899996041, 0.0, 
-        0.2117562093, 0.4431713488, -0.8716388481, 0.0, 
+        -0.9023136427, 0.4310860309, 0.0, 0.0,
+        0.3731804153, 0.7899661139, 0.4899996041, 0.0,
+        0.2117562093, 0.4431713488, -0.8716388481, 0.0,
         -2418525.0442296155, 5374967.3619212005, 2429440.091217066, 1.0
     };
 

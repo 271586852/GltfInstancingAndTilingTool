@@ -8,6 +8,7 @@
 #include "instancingLOD_manager.h"     // 新增
 #include "NonInstancingLOD_manager.h" // 新增
 #include "QuadtreePipeline.h" // 新增
+#include "experiment_utils.h" // Experiment mode utilities
 
 #include <iostream>
 #include <filesystem>
@@ -200,6 +201,20 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 try { config.quadtreeMaxDepth = std::stoi(value); } catch(...) {}
             } else if (key == "quadtree_max_objects_per_tile") {
                 try { config.quadtreeMaxObjectsPerTile = std::stoi(value); } catch(...) {}
+            } else if (key == "enable_experiment_mode") {
+                std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+                if (value == "true" || value == "1" || value == "yes") config.enableExperimentMode = true;
+                else config.enableExperimentMode = false;
+            } else if (key == "use_symbolic_links") {
+                std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+                if (value == "true" || value == "1" || value == "yes") config.useSymbolicLinks = true;
+                else config.useSymbolicLinks = false;
+            } else if (key == "experiment1_name") {
+                config.experiment1Name = value;
+            } else if (key == "experiment2_name") {
+                config.experiment2Name = value;
+            } else if (key == "experiment3_name") {
+                config.experiment3Name = value;
             }
             // --- HLOD Instancing Detection Parameters ---
             else if (key == "hlod_geometry_tolerance" || key == "hlod_tolerance") {
@@ -277,6 +292,10 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("  --enable-quadtree:                   Enable Quadtree HLOD pipeline. Default: false.");
     GltfInstancing::logInfo("  --quadtree-max-depth <value>:        Max depth for Quadtree. Default: 6.");
     GltfInstancing::logInfo("  --quadtree-max-objs <value>:         Max objects per tile for Quadtree splitting. Default: 50.");
+    GltfInstancing::logInfo("");
+    GltfInstancing::logInfo("Experiment Mode Options:");
+    GltfInstancing::logInfo("  --enable-experiment-mode:            Enable experiment mode to organize outputs for comparison.");
+    GltfInstancing::logInfo("  --use-symbolic-links:                Use symbolic links instead of copying files (saves disk space).");
     GltfInstancing::logInfo("");
     GltfInstancing::logInfo("HLOD Instancing Detection Parameters (Independent from Stage 1):");
     GltfInstancing::logInfo("  --hlod-tolerance <value>:             Geometric tolerance for HLOD instancing detection.");
@@ -694,10 +713,10 @@ void processCsvAgainstGlb(const ToolConfiguration& config) {
 }
 
 int main(int argc, char* argv[]) {
-   /* #if _DEBUG
-        std::cout << "Waiting for debugger to attach. Press Enter to continue..." << std::endl;
-        std::cin.get();
-    #endif*/
+    /* #if _DEBUG
+         std::cout << "Waiting for debugger to attach. Press Enter to continue..." << std::endl;
+         std::cin.get();
+     #endif*/
 
     GltfInstancing::logInfo("GltfInstancingTool starting...");
 
@@ -716,8 +735,9 @@ int main(int argc, char* argv[]) {
                 customConfigFilePath = argv[++i];
                 useCustomConfigFile = true;
             }
-        } else if (arg == "--log-level") {
-             if (i + 1 < argc) {
+        }
+        else if (arg == "--log-level") {
+            if (i + 1 < argc) {
                 std::string levelStr = argv[++i];
                 std::transform(levelStr.begin(), levelStr.end(), levelStr.begin(), ::toupper);
                 if (levelStr == "NONE") GltfInstancing::setLogLevel(GltfInstancing::LogLevel::NONE);
@@ -730,17 +750,17 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if(useCustomConfigFile) {
+    if (useCustomConfigFile) {
         GltfInstancing::logInfo("Custom configuration file specified: " + customConfigFilePath);
         if (!loadConfigurationFromFile(customConfigFilePath, config)) {
             GltfInstancing::logError("Failed to load specified configuration file: " + customConfigFilePath + ". Exiting.");
-            return 1; 
+            return 1;
         }
     }
 
     // 2. Parse all command-line arguments (will override config file settings)
-    int argIndex = 1; 
-    while(argIndex < argc) {
+    int argIndex = 1;
+    while (argIndex < argc) {
         std::string arg = argv[argIndex];
 
         // Options processed in the first pass can be skipped
@@ -754,29 +774,36 @@ int main(int argc, char* argv[]) {
             if (argIndex + 1 < argc) {
                 config.inputDirectory = argv[++argIndex];
                 config.inputDirectorySet = true;
-            } else {
+            }
+            else {
                 GltfInstancing::logError("--input_directory option (CLI) requires a path."); printUsage(argv[0]); return 1;
             }
-        } else if (arg == "--output_directory") {
+        }
+        else if (arg == "--output_directory") {
             if (argIndex + 1 < argc) {
                 config.outputDirectory = argv[++argIndex];
                 config.outputDirectorySet = true;
-            } else {
+            }
+            else {
                 GltfInstancing::logError("--output_directory option (CLI) requires a path."); printUsage(argv[0]); return 1;
             }
-        } else if (arg == "--tolerance") {
+        }
+        else if (arg == "--tolerance") {
             if (argIndex + 1 < argc) {
                 try {
                     config.geometryTolerance = std::stod(argv[++argIndex]);
                     config.geometryToleranceSet = true;
                     GltfInstancing::logDebug("Command-line override: Using geometry tolerance: " + std::to_string(config.geometryTolerance));
-                } catch (const std::exception& e) {
+                }
+                catch (const std::exception& e) {
                     GltfInstancing::logError("Invalid value for --tolerance (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
                 }
-            } else {
+            }
+            else {
                 GltfInstancing::logError("--tolerance option (CLI) requires a value."); printUsage(argv[0]); return 1;
             }
-        } else if (arg == "--skip-attribute-data-hash") {
+        }
+        else if (arg == "--skip-attribute-data-hash") {
             if (argIndex + 1 < argc) {
                 config.attributesToSkipDataHash = splitAndTrim(argv[++argIndex], ',');
                 config.attributesToSkipDataHashSet = true;
@@ -785,10 +812,12 @@ int main(int argc, char* argv[]) {
                     for (const auto& attr : config.attributesToSkipDataHash) attrsLogged += attr + " ";
                     GltfInstancing::logDebug(attrsLogged);
                 }
-            } else {
+            }
+            else {
                 GltfInstancing::logError("--skip-attribute-data-hash option (CLI) requires a comma-separated list."); printUsage(argv[0]); return 1;
             }
-        } else if (arg == "--normal-tolerance") {
+        }
+        else if (arg == "--normal-tolerance") {
             if (argIndex + 1 < argc) {
                 try {
                     config.normalTolerance = std::stod(argv[++argIndex]);
@@ -798,76 +827,102 @@ int main(int argc, char* argv[]) {
                     }
                     config.normalToleranceSet = true;
                     GltfInstancing::logDebug("Command-line override: Using normal tolerance: " + std::to_string(config.normalTolerance));
-                } catch (const std::exception& e) {
+                }
+                catch (const std::exception& e) {
                     GltfInstancing::logError("Invalid value for --normal-tolerance (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
                 }
-            } else {
+            }
+            else {
                 GltfInstancing::logError("--normal-tolerance option (CLI) requires a value."); printUsage(argv[0]); return 1;
             }
-        } else if (arg == "--merge-all-glb") {
+        }
+        else if (arg == "--merge-all-glb") {
             config.mergeAllGlb = true;
             config.mergeAllGlbSet = true;
             GltfInstancing::logDebug("Command-line override: Merge all GLB outputs enabled.");
-        } else if (arg == "--instance-limit") {
+        }
+        else if (arg == "--instance-limit") {
             if (argIndex + 1 < argc) {
                 try {
                     config.instanceLimit = std::stoi(argv[++argIndex]);
-                     if (config.instanceLimit < 1) {
+                    if (config.instanceLimit < 1) {
                         GltfInstancing::logWarning("WARNING (CLI): Instance limit must be >= 1. Using default 2.");
                         config.instanceLimit = 2;
                     }
                     config.instanceLimitSet = true;
                     GltfInstancing::logDebug("Command-line override: Using instance limit: " + std::to_string(config.instanceLimit));
-                } catch (const std::exception& e) {
+                }
+                catch (const std::exception& e) {
                     GltfInstancing::logError("Invalid value for --instance-limit (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
                 }
-            } else {
+            }
+            else {
                 GltfInstancing::logError("--instance-limit option (CLI) requires a value."); printUsage(argv[0]); return 1;
             }
-        } else if (arg == "--mesh-segmentation") {
+        }
+        else if (arg == "--mesh-segmentation") {
             config.meshSegmentation = true;
             config.meshSegmentationSet = true;
             GltfInstancing::logDebug("Command-line override: Mesh segmentation enabled (each mesh to a separate GLB).");
-        } else if (arg == "--csv-dir") {
+        }
+        else if (arg == "--csv-dir") {
             if (argIndex + 1 < argc) {
                 config.csvDirectory = argv[++argIndex];
                 config.csvDirectorySet = true;
                 GltfInstancing::logDebug("Command-line override: CSV processing directory set to: " + config.csvDirectory);
-            } else {
+            }
+            else {
                 GltfInstancing::logError("--csv-dir option (CLI) requires a path."); printUsage(argv[0]); return 1;
             }
-        } else if (arg == "--enable-quadtree") {
+        }
+        else if (arg == "--enable-quadtree") {
             config.enableQuadtree = true;
             config.enableQuadtreeSet = true;
-        } else if (arg == "--quadtree-max-depth") {
+        }
+        else if (arg == "--quadtree-max-depth") {
             if (argIndex + 1 < argc) {
                 try {
                     config.quadtreeMaxDepth = std::stoi(argv[++argIndex]);
-                } catch(...) {
+                }
+                catch (...) {
                     GltfInstancing::logWarning("Invalid value for --quadtree-max-depth. Using default.");
                 }
             }
-        } else if (arg == "--quadtree-max-objs") {
-             if (argIndex + 1 < argc) {
+        }
+        else if (arg == "--quadtree-max-objs") {
+            if (argIndex + 1 < argc) {
                 try {
                     config.quadtreeMaxObjectsPerTile = std::stoi(argv[++argIndex]);
-                } catch(...) {
+                }
+                catch (...) {
                     GltfInstancing::logWarning("Invalid value for --quadtree-max-objs. Using default.");
                 }
             }
-        } else if (arg == "--hlod-tolerance" || arg == "--hlod-geometry-tolerance") {
+        }
+        else if (arg == "--enable-experiment-mode") {
+            config.enableExperimentMode = true;
+            GltfInstancing::logDebug("Command-line override: Experiment mode enabled.");
+        }
+        else if (arg == "--use-symbolic-links") {
+            config.useSymbolicLinks = true;
+            GltfInstancing::logDebug("Command-line override: Using symbolic links for experiment results.");
+        }
+        else if (arg == "--hlod-tolerance" || arg == "--hlod-geometry-tolerance") {
             if (argIndex + 1 < argc) {
                 try {
                     config.hlodGeometryTolerance = std::stod(argv[++argIndex]);
                     config.hlodGeometryToleranceSet = true;
                     GltfInstancing::logDebug("Command-line override: Using HLOD geometry tolerance: " + std::to_string(config.hlodGeometryTolerance));
-                } catch (const std::exception& e) {
+                }
+                catch (const std::exception& e) {
                     GltfInstancing::logError("Invalid value for --hlod-tolerance (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
                 }
-            } else {
+            }
+            else {
                 GltfInstancing::logError("--hlod-tolerance option (CLI) requires a value."); printUsage(argv[0]); return 1;
             }
-        } else if (arg == "--hlod-normal-tolerance") {
+        }
+        else if (arg == "--hlod-normal-tolerance") {
             if (argIndex + 1 < argc) {
                 try {
                     config.hlodNormalTolerance = std::stod(argv[++argIndex]);
@@ -877,13 +932,16 @@ int main(int argc, char* argv[]) {
                     }
                     config.hlodNormalToleranceSet = true;
                     GltfInstancing::logDebug("Command-line override: Using HLOD normal tolerance: " + std::to_string(config.hlodNormalTolerance));
-                } catch (const std::exception& e) {
+                }
+                catch (const std::exception& e) {
                     GltfInstancing::logError("Invalid value for --hlod-normal-tolerance (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
                 }
-            } else {
+            }
+            else {
                 GltfInstancing::logError("--hlod-normal-tolerance option (CLI) requires a value."); printUsage(argv[0]); return 1;
             }
-        } else if (arg == "--hlod-skip-attribute-data-hash") {
+        }
+        else if (arg == "--hlod-skip-attribute-data-hash") {
             if (argIndex + 1 < argc) {
                 config.hlodAttributesToSkipDataHash = splitAndTrim(argv[++argIndex], ',');
                 config.hlodAttributesToSkipDataHashSet = true;
@@ -892,10 +950,12 @@ int main(int argc, char* argv[]) {
                     for (const auto& attr : config.hlodAttributesToSkipDataHash) attrsLogged += attr + " ";
                     GltfInstancing::logDebug(attrsLogged);
                 }
-            } else {
+            }
+            else {
                 GltfInstancing::logError("--hlod-skip-attribute-data-hash option (CLI) requires a comma-separated list."); printUsage(argv[0]); return 1;
             }
-        } else if (arg == "--hlod-instance-limit") {
+        }
+        else if (arg == "--hlod-instance-limit") {
             if (argIndex + 1 < argc) {
                 try {
                     config.hlodInstanceLimit = std::stoi(argv[++argIndex]);
@@ -905,16 +965,20 @@ int main(int argc, char* argv[]) {
                     }
                     config.hlodInstanceLimitSet = true;
                     GltfInstancing::logDebug("Command-line override: Using HLOD instance limit: " + std::to_string(config.hlodInstanceLimit));
-                } catch (const std::exception& e) {
+                }
+                catch (const std::exception& e) {
                     GltfInstancing::logError("Invalid value for --hlod-instance-limit (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
                 }
-            } else {
+            }
+            else {
                 GltfInstancing::logError("--hlod-instance-limit option (CLI) requires a value."); printUsage(argv[0]); return 1;
             }
-        } else if (arg == "--hlod-allow-non-uniform-scale-instancing") {
+        }
+        else if (arg == "--hlod-allow-non-uniform-scale-instancing") {
             config.hlodAllowNonUniformScaleInstancing = true;
             GltfInstancing::logDebug("Command-line override: HLOD allow non-uniform scale instancing enabled.");
-        } else { // An unknown option
+        }
+        else { // An unknown option
             GltfInstancing::logError("Unexpected command-line argument: " + arg);
             printUsage(argv[0]);
             return 1;
@@ -941,45 +1005,49 @@ int main(int argc, char* argv[]) {
     // If meshSegmentation was NOT enabled by user, we perform a temporary segmentation here for Quadtree.
     if (config.enableQuadtree) {
         GltfInstancing::logInfo("Quadtree Pipeline Enabled (Post-Processing Stage).");
-        
+
         std::string quadtreeInputPath = "";
         bool tempInput = false;
 
         // 1. Determine Input Source
         if (config.meshSegmentation) {
-             // User already generated segmented files, use them directly
-             quadtreeInputPath = (std::filesystem::path(config.outputDirectory) / "segmented_glb_output").string();
-             GltfInstancing::logInfo("Using existing segmented output for Quadtree input: " + quadtreeInputPath);
-        } else {
-             // We need to generate separated files from the non-instanced result of Stage 1
-             GltfInstancing::logInfo("Mesh segmentation was not enabled. Generating temporary separated GLBs for Quadtree input...");
-             
-             // Locate Non-Instanced Output from Stage 1
-             std::filesystem::path nonInstancedGlbPath = std::filesystem::path(config.outputDirectory) / "non_instanced_meshes.glb";
-             
-             if (std::filesystem::exists(nonInstancedGlbPath)) {
-                 std::filesystem::path tempOutputDir = std::filesystem::path(config.outputDirectory) / "quadtree_temp_input";
-                 std::filesystem::create_directories(tempOutputDir);
-                 
-                 GltfInstancing::GlbReader splitReader;
-                 std::set<std::filesystem::path> fileSet = { nonInstancedGlbPath };
-                 auto modelsToSplit = splitReader.loadGltfModels(fileSet);
-                 
-                 GltfInstancing::GlbWriter splitWriter;
-                 if (!modelsToSplit.empty()) {
-                     if (splitWriter.writeMeshesAsSeparateGlbs(modelsToSplit, tempOutputDir)) {
-                         quadtreeInputPath = tempOutputDir.string();
-                         tempInput = true; 
-                         GltfInstancing::logInfo("Generated temporary Quadtree input at: " + quadtreeInputPath);
-                     } else {
-                         GltfInstancing::logError("Failed to generate temporary separated GLBs.");
-                     }
-                 } else {
-                      GltfInstancing::logError("Failed to load non-instanced GLB for splitting: " + nonInstancedGlbPath.string());
-                 }
-             } else {
-                 GltfInstancing::logError("Non-instanced GLB not found (" + nonInstancedGlbPath.string() + "). Cannot run Quadtree Pipeline.");
-             }
+            // User already generated segmented files, use them directly
+            quadtreeInputPath = (std::filesystem::path(config.outputDirectory) / "segmented_glb_output").string();
+            GltfInstancing::logInfo("Using existing segmented output for Quadtree input: " + quadtreeInputPath);
+        }
+        else {
+            // We need to generate separated files from the non-instanced result of Stage 1
+            GltfInstancing::logInfo("Mesh segmentation was not enabled. Generating temporary separated GLBs for Quadtree input...");
+
+            // Locate Non-Instanced Output from Stage 1
+            std::filesystem::path nonInstancedGlbPath = std::filesystem::path(config.outputDirectory) / "non_instanced_meshes.glb";
+
+            if (std::filesystem::exists(nonInstancedGlbPath)) {
+                std::filesystem::path tempOutputDir = std::filesystem::path(config.outputDirectory) / "quadtree_temp_input";
+                std::filesystem::create_directories(tempOutputDir);
+
+                GltfInstancing::GlbReader splitReader;
+                std::set<std::filesystem::path> fileSet = { nonInstancedGlbPath };
+                auto modelsToSplit = splitReader.loadGltfModels(fileSet);
+
+                GltfInstancing::GlbWriter splitWriter;
+                if (!modelsToSplit.empty()) {
+                    if (splitWriter.writeMeshesAsSeparateGlbs(modelsToSplit, tempOutputDir)) {
+                        quadtreeInputPath = tempOutputDir.string();
+                        tempInput = true;
+                        GltfInstancing::logInfo("Generated temporary Quadtree input at: " + quadtreeInputPath);
+                    }
+                    else {
+                        GltfInstancing::logError("Failed to generate temporary separated GLBs.");
+                    }
+                }
+                else {
+                    GltfInstancing::logError("Failed to load non-instanced GLB for splitting: " + nonInstancedGlbPath.string());
+                }
+            }
+            else {
+                GltfInstancing::logError("Non-instanced GLB not found (" + nonInstancedGlbPath.string() + "). Cannot run Quadtree Pipeline.");
+            }
         }
 
         // 2. Run Pipeline
@@ -989,17 +1057,17 @@ int main(int argc, char* argv[]) {
             quadConfig.inputDirectory = quadtreeInputPath;
             // Output to a subfolder to avoid overwriting standard output
             quadConfig.outputDirectory = (std::filesystem::path(config.outputDirectory) / "quadtree_output").string();
-            
+
             GltfInstancing::logInfo("Starting Quadtree Pipeline...");
             QuadtreePipeline::Pipeline pipeline(quadConfig);
             pipeline.run();
             GltfInstancing::logInfo("Quadtree Pipeline Finished. Output at: " + quadConfig.outputDirectory);
-            
+
             // Optional: Cleanup temp
-             if (tempInput) {
-                 // std::filesystem::remove_all(quadtreeInputPath); 
-                 // Keeping it might be useful for debug
-             }
+            if (tempInput) {
+                // std::filesystem::remove_all(quadtreeInputPath); 
+                // Keeping it might be useful for debug
+            }
         }
     }
 
@@ -1012,17 +1080,27 @@ int main(int argc, char* argv[]) {
         try {
             if (std::filesystem::create_directories(config.outputDirectory)) {
                 GltfInstancing::logInfo("Created output directory: " + config.outputDirectory);
-            } else if (!std::filesystem::is_directory(config.outputDirectory)) {
-                 GltfInstancing::logError("Failed to create output directory (or it's not a directory): " + config.outputDirectory);
-                 return 1;
             }
-        } catch (const std::filesystem::filesystem_error& e) {
+            else if (!std::filesystem::is_directory(config.outputDirectory)) {
+                GltfInstancing::logError("Failed to create output directory (or it's not a directory): " + config.outputDirectory);
+                return 1;
+            }
+        }
+        catch (const std::filesystem::filesystem_error& e) {
             GltfInstancing::logError("Failed to create output directory: " + config.outputDirectory + ". Error: " + e.what());
             return 1;
         }
-    } else if (!std::filesystem::is_directory(config.outputDirectory)) {
+    }
+    else if (!std::filesystem::is_directory(config.outputDirectory)) {
         GltfInstancing::logError("Output path exists but is not a directory: " + config.outputDirectory);
         return 1;
+    }
+
+    // Create experiment directories if experiment mode is enabled
+    if (config.enableExperimentMode) {
+        if (!ExperimentUtils::createExperimentDirectories(config)) {
+            GltfInstancing::logWarning("Failed to create some experiment directories, but continuing processing...");
+        }
     }
 
     GltfInstancing::logInfo("Stage 1: Discovering, Reading, and Processing GLB files for Instancing...");
@@ -1057,20 +1135,25 @@ int main(int argc, char* argv[]) {
         reportFile << reportContent;
         reportFile.close();
         // GltfInstancing::logInfo("Instancing analysis report written to: " + reportPath.string());
-    } else {
+    }
+    else {
         GltfInstancing::logError("Failed to write instancing analysis report to: " + reportPath.string());
     }
 
     // --- STANDARD OUTPUT GENERATION (Always run) ---
     // (Generate CSV Report first)
     writeAnalysisCsv(config, loadedModels, detectionResult);
-    
+
     std::filesystem::path instancedGlbFileNameBase = "instanced_meshes";
     std::filesystem::path nonInstancedGlbFileNameBase = "non_instanced_meshes";
     std::vector<std::filesystem::path> stage1_outputGlbs;
 
     std::optional<std::pair<std::filesystem::path, GltfInstancing::BoundingBox>> instancedWriteResult;
     std::optional<std::pair<std::filesystem::path, GltfInstancing::BoundingBox>> nonInstancedWriteResult;
+
+    // Declare tileset paths here for later use in experiment mode
+    std::filesystem::path instancedTilesetPath;
+    std::filesystem::path nonInstancedTilesetPath;
 
     if (config.mergeAllGlb) {
         std::filesystem::path mergedInstancedGlbPath = std::filesystem::path(config.outputDirectory) / (instancedGlbFileNameBase.string() + ".glb");
@@ -1080,18 +1163,19 @@ int main(int argc, char* argv[]) {
         std::filesystem::path mergedNonInstancedGlbPath = std::filesystem::path(config.outputDirectory) / (nonInstancedGlbFileNameBase.string() + ".glb");
         nonInstancedWriteResult = glbWriter.writeNonInstancedMeshesOnly(loadedModels, detectionResult, mergedNonInstancedGlbPath);
         if (nonInstancedWriteResult) stage1_outputGlbs.push_back(nonInstancedWriteResult->first);
-    } else {
+    }
+    else {
         std::filesystem::path instancedGlbPath = std::filesystem::path(config.outputDirectory) / (instancedGlbFileNameBase.string() + ".glb");
         instancedWriteResult = glbWriter.writeInstancedMeshesOnly(loadedModels, detectionResult, instancedGlbPath);
         if (instancedWriteResult) stage1_outputGlbs.push_back(instancedWriteResult->first);
-    
+
         std::filesystem::path nonInstancedGlbPath = std::filesystem::path(config.outputDirectory) / (nonInstancedGlbFileNameBase.string() + ".glb");
         nonInstancedWriteResult = glbWriter.writeNonInstancedMeshesOnly(loadedModels, detectionResult, nonInstancedGlbPath);
         if (nonInstancedWriteResult) stage1_outputGlbs.push_back(nonInstancedWriteResult->first);
     }
 
     if (instancedWriteResult && instancedWriteResult->second.isValid()) {
-        std::filesystem::path instancedTilesetPath = std::filesystem::path(config.outputDirectory) / "tileset_instanced.json";
+        instancedTilesetPath = std::filesystem::path(config.outputDirectory) / "tileset_instanced.json";
         std::vector<std::filesystem::path> instancedUris = { instancedWriteResult->first };
         GltfInstancing::BoundingBox bbox = instancedWriteResult->second;
         glm::dvec3 extents = bbox.max - bbox.min;
@@ -1102,7 +1186,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (nonInstancedWriteResult && nonInstancedWriteResult->second.isValid()) {
-        std::filesystem::path nonInstancedTilesetPath = std::filesystem::path(config.outputDirectory) / "tileset_non_instanced.json";
+        nonInstancedTilesetPath = std::filesystem::path(config.outputDirectory) / "tileset_non_instanced.json";
         std::vector<std::filesystem::path> nonInstancedUris = { nonInstancedWriteResult->first };
         GltfInstancing::BoundingBox bbox = nonInstancedWriteResult->second;
         glm::dvec3 extents = bbox.max - bbox.min;
@@ -1112,185 +1196,254 @@ int main(int argc, char* argv[]) {
         tilesetWriter.writeTileset(nonInstancedUris, nonInstancedTilesetPath, rootGeometricError);
     }
 
+    // Handle experiment mode for Stage 1 results
+    if (config.enableExperimentMode && (instancedWriteResult || nonInstancedWriteResult)) {
+        GltfInstancing::logInfo("Organizing Stage 1 results into experiment1 directory...");
+
+        // Copy instanced results to experiment1/instanced/
+        if (instancedWriteResult) {
+            auto exp1InstancedDir = ExperimentUtils::getExperiment1Path(config) / "instanced";
+            if (std::filesystem::exists(instancedWriteResult->first)) {
+                ExperimentUtils::copyOrLinkFile(instancedWriteResult->first,
+                    exp1InstancedDir / "meshes.glb", config.useSymbolicLinks);
+            }
+            if (std::filesystem::exists(instancedTilesetPath) && !instancedTilesetPath.empty()) {
+                ExperimentUtils::copyOrLinkFile(instancedTilesetPath,
+                    exp1InstancedDir / "tileset.json", config.useSymbolicLinks);
+            }
+        }
+
+        // Copy non-instanced results to experiment1/non_instanced/
+        if (nonInstancedWriteResult) {
+            auto exp1NonInstancedDir = ExperimentUtils::getExperiment1Path(config) / "non_instanced";
+            if (std::filesystem::exists(nonInstancedWriteResult->first)) {
+                ExperimentUtils::copyOrLinkFile(nonInstancedWriteResult->first,
+                    exp1NonInstancedDir / "meshes.glb", config.useSymbolicLinks);
+            }
+            if (std::filesystem::exists(nonInstancedTilesetPath) && !nonInstancedTilesetPath.empty()) {
+                ExperimentUtils::copyOrLinkFile(nonInstancedTilesetPath,
+                    exp1NonInstancedDir / "tileset.json", config.useSymbolicLinks);
+            }
+        }
+
+        // Generate experiment1 comparison report
+        std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>> reportData;
+
+        // Add basic comparison metrics
+        std::vector<std::pair<std::string, std::string>> instancedMetrics;
+        if (instancedWriteResult && std::filesystem::exists(instancedWriteResult->first)) {
+            auto fileSize = std::filesystem::file_size(instancedWriteResult->first);
+            instancedMetrics.push_back({ "File Size (bytes)", std::to_string(fileSize) });
+            instancedMetrics.push_back({ "Bounding Box Valid", "Yes" });
+        }
+
+        std::vector<std::pair<std::string, std::string>> nonInstancedMetrics;
+        if (nonInstancedWriteResult && std::filesystem::exists(nonInstancedWriteResult->first)) {
+            auto fileSize = std::filesystem::file_size(nonInstancedWriteResult->first);
+            nonInstancedMetrics.push_back({ "File Size (bytes)", std::to_string(fileSize) });
+            nonInstancedMetrics.push_back({ "Bounding Box Valid", "Yes" });
+        }
+
+        reportData.push_back(std::make_pair("Instanced Results", instancedMetrics));
+        reportData.push_back(std::make_pair("Non-Instanced Results", nonInstancedMetrics));
+
+        ExperimentUtils::writeExperimentComparisonReport(config, "experiment1", reportData);
+    }
+
     // --- Non-Instanced LOD Generation with Post-LOD Instancing ---
     if (config.enableNonInstancedLodGeneration && nonInstancedWriteResult) {
-         GltfInstancing::logInfo("Generating LODs for non-instanced meshes with post-process instancing...");
-         std::filesystem::path lodOutputDir = std::filesystem::path(config.outputDirectory) / "non_instancing_lod_output";
-         
-         // 1. Generate Raw LOD Files (Geometry Simplification only)
-         auto lodLevels = NonInstancingLOD::NonInstancingLODManager::generateLODFilesOnly(
-             nonInstancedWriteResult->first,
-             lodOutputDir,
-             config.nonInstancedLodLevelCount,
-             (float)config.nonInstancedLodRatio,
-             config.nonInstancedMinSimplifyIndexCount
-         );
+        GltfInstancing::logInfo("Generating LODs for non-instanced meshes with post-process instancing...");
+        std::filesystem::path lodOutputDir = std::filesystem::path(config.outputDirectory) / "non_instancing_lod_output";
 
-         if (!lodLevels.empty()) {
-             // -------------------------------------------------------
-             // 1. Always generate Standard Tileset (Base functionality)
-             // -------------------------------------------------------
-             GltfInstancing::logInfo("Organizing generated LOD files into standard tileset...");
-             
-             GltfInstancing::TilesetNode standardRoot;
-             GltfInstancing::TilesetNode* stdCurrent = &standardRoot;
-             
-             // Reverse iterate (Coarsest -> Finest)
-             for (int i = lodLevels.size() - 1; i >= 0; --i) {
-                 GltfInstancing::TilesetNode node;
-                 node.contentUri = lodLevels[i].filePath.filename().string();
-                 
-                 double error = lodLevels[i].geometricError;
-                 if (i == lodLevels.size() - 1) error = 1000.0; // Root error
+        // 1. Generate Raw LOD Files (Geometry Simplification only)
+        auto lodLevels = NonInstancingLOD::NonInstancingLODManager::generateLODFilesOnly(
+            nonInstancedWriteResult->first,
+            lodOutputDir,
+            config.nonInstancedLodLevelCount,
+            (float)config.nonInstancedLodRatio,
+            config.nonInstancedMinSimplifyIndexCount
+        );
 
-                 node.geometricError = error;
-                 node.boundingVolume = { glm::dvec3(-10000), glm::dvec3(10000) }; 
-                 
-                 if (i == lodLevels.size() - 1) {
-                     standardRoot = node;
-                     stdCurrent = &standardRoot;
-                 } else {
-                     stdCurrent->children.push_back(node);
-                     stdCurrent = &stdCurrent->children.back();
-                 }
-             }
+        if (!lodLevels.empty()) {
+            // -------------------------------------------------------
+            // 1. Always generate Standard Tileset (Base functionality)
+            // -------------------------------------------------------
+            GltfInstancing::logInfo("Organizing generated LOD files into standard tileset...");
 
-             std::filesystem::path standardTilesetPath = lodOutputDir / "tileset.json";
-             tilesetWriter.writeHierarchicalTileset(standardRoot, standardTilesetPath);
-             GltfInstancing::logInfo("Standard Non-Instanced LOD tileset generated at: " + standardTilesetPath.string());
+            GltfInstancing::TilesetNode standardRoot;
+            GltfInstancing::TilesetNode* stdCurrent = &standardRoot;
 
-             // -------------------------------------------------------
-             // 2. Optional: Post-process Instancing (Advanced feature)
-             // -------------------------------------------------------
-             if (config.enableNonInstancedLodInstancing) {
-                 GltfInstancing::logInfo("Applying instancing detection to generated LOD levels (Outputting to subfolder)...");
-                 
-                 // Create sub-directory for instanced results
-                 std::filesystem::path instancedOutputDir = lodOutputDir / "instanced_lods";
-                 std::filesystem::create_directories(instancedOutputDir);
+            // Reverse iterate (Coarsest -> Finest)
+            for (int i = lodLevels.size() - 1; i >= 0; --i) {
+                GltfInstancing::TilesetNode node;
+                node.contentUri = lodLevels[i].filePath.filename().string();
+
+                double error = lodLevels[i].geometricError;
+                if (i == lodLevels.size() - 1) error = 1000.0; // Root error
+
+                node.geometricError = error;
+                node.boundingVolume = { glm::dvec3(-10000), glm::dvec3(10000) };
+
+                if (i == lodLevels.size() - 1) {
+                    standardRoot = node;
+                    stdCurrent = &standardRoot;
+                }
+                else {
+                    stdCurrent->children.push_back(node);
+                    stdCurrent = &stdCurrent->children.back();
+                }
+            }
+
+            std::filesystem::path standardTilesetPath = lodOutputDir / "tileset.json";
+            tilesetWriter.writeHierarchicalTileset(standardRoot, standardTilesetPath);
+            GltfInstancing::logInfo("Standard Non-Instanced LOD tileset generated at: " + standardTilesetPath.string());
+
+            // -------------------------------------------------------
+            // 2. Optional: Post-process Instancing (Advanced feature)
+            // -------------------------------------------------------
+            if (config.enableNonInstancedLodInstancing) {
+                GltfInstancing::logInfo("Applying instancing detection to generated LOD levels (Outputting to subfolder)...");
+
+                // Create sub-directory for instanced results
+                std::filesystem::path instancedOutputDir = lodOutputDir / "instanced_lods";
+                std::filesystem::create_directories(instancedOutputDir);
 
                 std::vector<GltfInstancing::TilesetNode> finalNodes;
                 GltfInstancing::GlbReader lodReader;
-                
+
                 // Use HLOD-specific instancing detection parameters
                 auto hlodParams = getHlodInstancingParams(config);
                 GltfInstancing::InstancingDetector lodDetector(
-                    hlodParams.geometryTolerance, 
-                    hlodParams.attributesToSkipDataHash, 
-                    hlodParams.normalTolerance, 
-                    hlodParams.instanceLimit, 
+                    hlodParams.geometryTolerance,
+                    hlodParams.attributesToSkipDataHash,
+                    hlodParams.normalTolerance,
+                    hlodParams.instanceLimit,
                     hlodParams.allowNonUniformScaleInstancing
                 );
-                GltfInstancing::logInfo("Using HLOD instancing detection parameters: tolerance=" + 
-                    std::to_string(hlodParams.geometryTolerance) + ", instance_limit=" + 
+                GltfInstancing::logInfo("Using HLOD instancing detection parameters: tolerance=" +
+                    std::to_string(hlodParams.geometryTolerance) + ", instance_limit=" +
                     std::to_string(hlodParams.instanceLimit));
 
-                 for (const auto& levelInfo : lodLevels) {
-                     GltfInstancing::logInfo("Processing Level " + std::to_string(levelInfo.level) + " for instancing...");
-                     
-                     std::set<std::filesystem::path> fileSet = { levelInfo.filePath };
-                     auto lodModels = lodReader.loadGltfModels(fileSet);
-                     if (lodModels.empty()) continue;
+                for (const auto& levelInfo : lodLevels) {
+                    GltfInstancing::logInfo("Processing Level " + std::to_string(levelInfo.level) + " for instancing...");
 
-                     auto lodDetectionResult = lodDetector.detect(lodModels);
-                     
-                     std::string baseName = levelInfo.filePath.stem().string();
-                     // Output to subfolder
-                     std::filesystem::path instancedPath = instancedOutputDir / (baseName + "_instanced.glb");
-                     std::filesystem::path uniquePath = instancedOutputDir / (baseName + "_unique.glb");
-                     
-                     auto writeInst = glbWriter.writeInstancedMeshesOnly(lodModels, lodDetectionResult, instancedPath);
-                     auto writeUniq = glbWriter.writeNonInstancedMeshesOnly(lodModels, lodDetectionResult, uniquePath);
+                    std::set<std::filesystem::path> fileSet = { levelInfo.filePath };
+                    auto lodModels = lodReader.loadGltfModels(fileSet);
+                    if (lodModels.empty()) continue;
 
-                     std::vector<std::filesystem::path> levelContents;
-                     GltfInstancing::BoundingBox combinedBBox;
+                    auto lodDetectionResult = lodDetector.detect(lodModels);
 
-                     if (writeInst && writeInst->second.isValid()) {
-                         levelContents.push_back(instancedPath);
-                         combinedBBox.merge(writeInst->second);
-                     }
-                     if (writeUniq && writeUniq->second.isValid()) {
-                         levelContents.push_back(uniquePath);
-                         combinedBBox.merge(writeUniq->second);
-                     }
+                    std::string baseName = levelInfo.filePath.stem().string();
+                    // Output to subfolder
+                    std::filesystem::path instancedPath = instancedOutputDir / (baseName + "_instanced.glb");
+                    std::filesystem::path uniquePath = instancedOutputDir / (baseName + "_unique.glb");
 
-                     std::string finalUri;
-                     
-                     if (levelContents.empty()) {
-                         GltfInstancing::logWarning("Level " + std::to_string(levelInfo.level) + " produced no content during instancing.");
-                         continue;
-                     } else if (levelContents.size() == 1) {
-                         finalUri = levelContents[0].filename().string();
-                     } else {
-                         std::string wrapperName = baseName + "_wrapper.json";
-                         std::filesystem::path wrapperPath = instancedOutputDir / wrapperName;
-                         
-                         if (tilesetWriter.writeWrapperTileset(levelContents, wrapperPath, levelInfo.geometricError)) {
-                             finalUri = wrapperName;
-                         } else {
-                             GltfInstancing::logError("Failed to write wrapper tileset for " + baseName);
-                             finalUri = levelContents[0].filename().string();
-                         }
-                     }
+                    auto writeInst = glbWriter.writeInstancedMeshesOnly(lodModels, lodDetectionResult, instancedPath);
+                    auto writeUniq = glbWriter.writeNonInstancedMeshesOnly(lodModels, lodDetectionResult, uniquePath);
 
-                     GltfInstancing::TilesetNode node;
-                     node.contentUri = finalUri;
-                     node.geometricError = levelInfo.geometricError;
-                     node.boundingVolume = combinedBBox;
-                     finalNodes.push_back(node);
-                 }
+                    std::vector<std::filesystem::path> levelContents;
+                    GltfInstancing::BoundingBox combinedBBox;
 
-                 if (!finalNodes.empty()) {
-                     GltfInstancing::TilesetNode rootNode;
-                     GltfInstancing::TilesetNode* current = &rootNode;
-                     
-                     for (int i = finalNodes.size() - 1; i >= 0; --i) {
-                         auto& srcNode = finalNodes[i];
-                         if (i == finalNodes.size() - 1 && srcNode.geometricError < 100.0) srcNode.geometricError = 1000.0; 
+                    if (writeInst && writeInst->second.isValid()) {
+                        levelContents.push_back(instancedPath);
+                        combinedBBox.merge(writeInst->second);
+                    }
+                    if (writeUniq && writeUniq->second.isValid()) {
+                        levelContents.push_back(uniquePath);
+                        combinedBBox.merge(writeUniq->second);
+                    }
 
-                         if (i == finalNodes.size() - 1) {
-                             rootNode = srcNode;
-                             current = &rootNode;
-                         } else {
-                             current->children.push_back(srcNode);
-                             current = &current->children.back();
-                         }
-                     }
+                    std::string finalUri;
 
-                     std::filesystem::path finalTilesetPath = instancedOutputDir / "tileset.json";
-                     tilesetWriter.writeHierarchicalTileset(rootNode, finalTilesetPath);
-                     GltfInstancing::logInfo("Advanced Instanced-LOD tileset generated at: " + finalTilesetPath.string());
-                 }
-             }
-         }
-    }
-    
-    // Stage 2: Mesh Segmentation
-    if (config.meshSegmentation) {
-            std::filesystem::path segmentationOutputDir = std::filesystem::path(config.outputDirectory) / "segmented_glb_output";
-            std::filesystem::create_directories(segmentationOutputDir);
-            GltfInstancing::GlbReader stage2Reader; 
-            std::vector<GltfInstancing::LoadedGltfModel> modelsToSegment;
-            for (const auto& glbPath : stage1_outputGlbs) {
-                if (std::filesystem::exists(glbPath)) {
-                    std::set<std::filesystem::path> singleFileSet = { glbPath };
-                    auto loadedSingleModelVec = stage2Reader.loadGltfModels(singleFileSet);
-                    modelsToSegment.insert(modelsToSegment.end(), loadedSingleModelVec.begin(), loadedSingleModelVec.end());
+                    if (levelContents.empty()) {
+                        GltfInstancing::logWarning("Level " + std::to_string(levelInfo.level) + " produced no content during instancing.");
+                        continue;
+                    }
+                    else if (levelContents.size() == 1) {
+                        finalUri = levelContents[0].filename().string();
+                    }
+                    else {
+                        std::string wrapperName = baseName + "_wrapper.json";
+                        std::filesystem::path wrapperPath = instancedOutputDir / wrapperName;
+
+                        if (tilesetWriter.writeWrapperTileset(levelContents, wrapperPath, levelInfo.geometricError)) {
+                            finalUri = wrapperName;
+                        }
+                        else {
+                            GltfInstancing::logError("Failed to write wrapper tileset for " + baseName);
+                            finalUri = levelContents[0].filename().string();
+                        }
+                    }
+
+                    GltfInstancing::TilesetNode node;
+                    node.contentUri = finalUri;
+                    node.geometricError = levelInfo.geometricError;
+                    node.boundingVolume = combinedBBox;
+                    finalNodes.push_back(node);
+                }
+
+                if (!finalNodes.empty()) {
+                    GltfInstancing::TilesetNode rootNode;
+                    GltfInstancing::TilesetNode* current = &rootNode;
+
+                    for (int i = finalNodes.size() - 1; i >= 0; --i) {
+                        auto& srcNode = finalNodes[i];
+                        if (i == finalNodes.size() - 1 && srcNode.geometricError < 100.0) srcNode.geometricError = 1000.0;
+
+                        if (i == finalNodes.size() - 1) {
+                            rootNode = srcNode;
+                            current = &rootNode;
+                        }
+                        else {
+                            current->children.push_back(srcNode);
+                            current = &current->children.back();
+                        }
+                    }
+
+                    std::filesystem::path finalTilesetPath = instancedOutputDir / "tileset.json";
+                    tilesetWriter.writeHierarchicalTileset(rootNode, finalTilesetPath);
+                    GltfInstancing::logInfo("Advanced Instanced-LOD tileset generated at: " + finalTilesetPath.string());
+
+                    // Handle experiment mode for non-instanced LOD post-processing results
+                    if (config.enableExperimentMode) {
+                        GltfInstancing::logInfo("Organizing non-instanced LOD post-processing results into experiment2 directory...");
+
+                        // Copy non-instanced LOD post-processing results to experiment2/non_instanced_lod/instanced_lods/
+                        auto exp2NonInstancedLODDir = ExperimentUtils::getExperiment2Path(config) / "non_instanced_lod" / "instanced_lods";
+                        ExperimentUtils::copyDirectoryContents(instancedOutputDir, exp2NonInstancedLODDir, config.useSymbolicLinks);
+                    }
                 }
             }
-            if (!modelsToSegment.empty()) {
-                glbWriter.writeMeshesAsSeparateGlbs(modelsToSegment, segmentationOutputDir);
+        }
+    }
+
+    // Stage 2: Mesh Segmentation
+    if (config.meshSegmentation) {
+        std::filesystem::path segmentationOutputDir = std::filesystem::path(config.outputDirectory) / "segmented_glb_output";
+        std::filesystem::create_directories(segmentationOutputDir);
+        GltfInstancing::GlbReader stage2Reader;
+        std::vector<GltfInstancing::LoadedGltfModel> modelsToSegment;
+        for (const auto& glbPath : stage1_outputGlbs) {
+            if (std::filesystem::exists(glbPath)) {
+                std::set<std::filesystem::path> singleFileSet = { glbPath };
+                auto loadedSingleModelVec = stage2Reader.loadGltfModels(singleFileSet);
+                modelsToSegment.insert(modelsToSegment.end(), loadedSingleModelVec.begin(), loadedSingleModelVec.end());
             }
+        }
+        if (!modelsToSegment.empty()) {
+            glbWriter.writeMeshesAsSeparateGlbs(modelsToSegment, segmentationOutputDir);
+        }
     }
 
     // --- LOD Generation Logic ---
     if (config.enableLodGeneration) {
         GltfInstancing::logInfo("LOD Generation Enabled. Loading semantic data...");
-        
+
         GltfInstancing::SemanticParser semanticParser;
         if (!config.semanticDataPath.empty() && std::filesystem::exists(config.semanticDataPath)) {
             semanticParser.parse(config.semanticDataPath);
-        } else {
+        }
+        else {
             GltfInstancing::logWarning("Semantic data path invalid or not set. LOD generation will proceed without semantic hints (mostly geometry-based).");
         }
 
@@ -1318,7 +1471,7 @@ int main(int argc, char* argv[]) {
         for (auto const& [level, result] : lodResults) {
             std::string filename = "LOD" + std::to_string(level) + ".glb";
             std::filesystem::path outputPath = lodOutputDir / filename;
-            
+
             auto writeRes = glbWriter.writeLODGlb(loadedModels, result, outputPath);
             if (writeRes && writeRes->second.isValid()) {
                 GltfInstancing::TilesetNode node;
@@ -1332,12 +1485,13 @@ int main(int argc, char* argv[]) {
                 stats.level = level;
                 try {
                     stats.fileSizeMB = (double)std::filesystem::file_size(outputPath) / (1024.0 * 1024.0);
-                } catch (...) { stats.fileSizeMB = 0.0; }
-                
+                }
+                catch (...) { stats.fileSizeMB = 0.0; }
+
                 stats.uniqueMeshes = 0;
                 stats.totalVertices = 0;
                 stats.totalInstances = 0;
-                
+
                 // Calculate from result.nodes (ExtendedMeshInfo)
                 // Note: result.nodes contains the *representatives*.
                 stats.uniqueMeshes = result.nodes.size();
@@ -1354,26 +1508,27 @@ int main(int argc, char* argv[]) {
         size_t originalVertices = 0;
         size_t originalInstancesTotal = 0; // Total instances in original scene (flattened)
         for (const auto& p : initialGlbFilePaths) {
-             try { originalFileSizeMB += (double)std::filesystem::file_size(p) / (1024.0 * 1024.0); } catch(...) {}
+            try { originalFileSizeMB += (double)std::filesystem::file_size(p) / (1024.0 * 1024.0); }
+            catch (...) {}
         }
         // Estimate original unique vertices (loadedModels)
         for (const auto& lm : loadedModels) {
             for (const auto& mesh : lm.model.meshes) {
                 for (const auto& prim : mesh.primitives) {
-                     auto it = prim.attributes.find("POSITION");
-                     if (it != prim.attributes.end()) {
-                         int accId = it->second;
-                         if (accId >= 0 && accId < lm.model.accessors.size()) {
-                             originalVertices += lm.model.accessors[accId].count;
-                         }
-                     }
+                    auto it = prim.attributes.find("POSITION");
+                    if (it != prim.attributes.end()) {
+                        int accId = it->second;
+                        if (accId >= 0 && accId < lm.model.accessors.size()) {
+                            originalVertices += lm.model.accessors[accId].count;
+                        }
+                    }
                 }
             }
             // Estimate original instances (roughly total nodes if no instancing, or sum of instance counts)
             // A better metric for "Original Instances" in this table context might be "Total Objects"
             // We can sum up instances from LOD5 result as the baseline "Total Objects" count.
             if (!lodResults.empty() && lodResults.count(5)) {
-                 for (const auto& m : lodResults.at(5).nodes) originalInstancesTotal += m.instances.size();
+                for (const auto& m : lodResults.at(5).nodes) originalInstancesTotal += m.instances.size();
             }
         }
 
@@ -1384,7 +1539,7 @@ int main(int argc, char* argv[]) {
         // In a real scenario with spatial splitting, it would be a tree.
         GltfInstancing::TilesetNode rootNode;
         GltfInstancing::TilesetNode* currentNode = &rootNode;
-        
+
         bool firstNodeFound = false;
 
         // Iterate from LOD1 (Root) down to LOD5 (Leaf)
@@ -1396,7 +1551,8 @@ int main(int argc, char* argv[]) {
                     // But here we take what InstancingLODManager calculated
                     currentNode = &rootNode;
                     firstNodeFound = true;
-                } else {
+                }
+                else {
                     currentNode->children.push_back(levelNodes[l]);
                     currentNode = &currentNode->children.back();
                 }
@@ -1407,87 +1563,142 @@ int main(int argc, char* argv[]) {
             std::filesystem::path tilesetPath = lodOutputDir / "tileset.json";
             tilesetWriter.writeHierarchicalTileset(rootNode, tilesetPath);
             GltfInstancing::logInfo("LOD processing complete. Tileset written to: " + tilesetPath.string());
-        } else {
-            GltfInstancing::logError("LOD generation failed to produce any valid levels.");
+
+            // Handle experiment mode for LOD results
+            if (config.enableExperimentMode) {
+                GltfInstancing::logInfo("Organizing LOD results into experiment2 directory...");
+
+                // Copy instanced LOD results to experiment2/instanced_lod/
+                auto exp2InstancedLODDir = ExperimentUtils::getExperiment2Path(config) / "instanced_lod";
+                ExperimentUtils::copyDirectoryContents(lodOutputDir, exp2InstancedLODDir, config.useSymbolicLinks);
+
+                // Generate experiment2 LOD comparison report
+                std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>> reportData;
+
+                // Add LOD analysis summary
+                std::vector<std::pair<std::string, std::string>> lodMetrics;
+                lodMetrics.push_back(std::make_pair("Generated LOD Levels", std::to_string(lodStatistics.size())));
+                lodMetrics.push_back(std::make_pair("Original File Size (MB)", std::to_string(originalFileSizeMB)));
+                lodMetrics.push_back(std::make_pair("Original Vertices", std::to_string(originalVertices)));
+                lodMetrics.push_back(std::make_pair("Original Instances", std::to_string(originalInstancesTotal)));
+
+                reportData.push_back(std::make_pair("LOD Analysis", lodMetrics));
+
+                ExperimentUtils::writeExperimentComparisonReport(config, "experiment2", reportData);
+            }
+
         }
 
+        // Stage 3: CSV Processing (Always run if configured)
+        processCsvAgainstGlb(config);
+
+        // --- Quadtree Pipeline Execution ---
+        // HLOD is now executed AFTER standard processing, using the results of Stage 1/2.
+        // NOTE: It requires separated GLB files. 
+        // If meshSegmentation was NOT enabled by user, we perform a temporary segmentation here for Quadtree.
+        if (config.enableQuadtree) {
+            GltfInstancing::logInfo("Quadtree Pipeline Enabled (Post-Processing Stage).");
+
+            std::string quadtreeInputPath = "";
+            bool tempInput = false;
+
+            // 1. Determine Input Source
+            if (config.meshSegmentation) {
+                // User already generated segmented files, use them directly
+                quadtreeInputPath = (std::filesystem::path(config.outputDirectory) / "segmented_glb_output").string();
+                GltfInstancing::logInfo("Using existing segmented output for Quadtree input: " + quadtreeInputPath);
+            }
+            else {
+                // We need to generate separated files from the non-instanced result of Stage 1
+                GltfInstancing::logInfo("Mesh segmentation was not enabled. Generating temporary separated GLBs for Quadtree input...");
+
+                // Locate Non-Instanced Output from Stage 1
+                std::filesystem::path nonInstancedGlbPath = std::filesystem::path(config.outputDirectory) / "non_instanced_meshes.glb";
+
+                if (std::filesystem::exists(nonInstancedGlbPath)) {
+                    std::filesystem::path tempOutputDir = std::filesystem::path(config.outputDirectory) / "quadtree_temp_input";
+                    std::filesystem::create_directories(tempOutputDir);
+
+                    GltfInstancing::GlbReader splitReader;
+                    std::set<std::filesystem::path> fileSet = { nonInstancedGlbPath };
+                    auto modelsToSplit = splitReader.loadGltfModels(fileSet);
+
+                    GltfInstancing::GlbWriter splitWriter;
+                    if (!modelsToSplit.empty()) {
+                        if (splitWriter.writeMeshesAsSeparateGlbs(modelsToSplit, tempOutputDir)) {
+                            quadtreeInputPath = tempOutputDir.string();
+                            tempInput = true;
+                            GltfInstancing::logInfo("Generated temporary Quadtree input at: " + quadtreeInputPath);
+                        }
+                        else {
+                            GltfInstancing::logError("Failed to generate temporary separated GLBs.");
+                        }
+                    }
+                    else {
+                        GltfInstancing::logError("Failed to load non-instanced GLB for splitting: " + nonInstancedGlbPath.string());
+                    }
+                }
+                else {
+                    GltfInstancing::logError("Non-instanced GLB not found (" + nonInstancedGlbPath.string() + "). Cannot run Quadtree Pipeline.");
+                }
+            }
+
+            // 2. Run Pipeline
+            if (!quadtreeInputPath.empty()) {
+                // Create a temporary config that points to the new input directory
+                ToolConfiguration quadConfig = config;
+                quadConfig.inputDirectory = quadtreeInputPath;
+                // Output to a subfolder to avoid overwriting standard output
+                quadConfig.outputDirectory = (std::filesystem::path(config.outputDirectory) / "quadtree_output").string();
+
+                GltfInstancing::logInfo("Starting Quadtree Pipeline...");
+
+                // Ensure Quadtree output directory exists
+                std::filesystem::create_directories(quadConfig.outputDirectory);
+
+                QuadtreePipeline::Pipeline pipeline(quadConfig);
+                pipeline.run();
+                GltfInstancing::logInfo("Quadtree Pipeline Finished. Output at: " + quadConfig.outputDirectory);
+
+                // Handle experiment mode for HLOD results (experiment3)
+                if (config.enableExperimentMode) {
+                    GltfInstancing::logInfo("Organizing HLOD results into experiment3 directory...");
+
+                    // Copy quadtree output to experiment3/non_instanced_hlod/
+                    auto exp3NonInstancedHLODDir = ExperimentUtils::getExperiment3Path(config) / "non_instanced_hlod";
+                    ExperimentUtils::copyDirectoryContents(quadConfig.outputDirectory, exp3NonInstancedHLODDir, config.useSymbolicLinks);
+
+                    // Link instanced LOD results to experiment3/instanced_lod/
+                    auto exp3InstancedLODDir = ExperimentUtils::getExperiment3Path(config) / "instanced_lod";
+                    auto sourceInstancedLODDir = std::filesystem::path(config.outputDirectory) / "instancing_lod_output";
+
+                    if (std::filesystem::exists(sourceInstancedLODDir)) {
+                        ExperimentUtils::copyDirectoryContents(sourceInstancedLODDir, exp3InstancedLODDir, config.useSymbolicLinks);
+                    }
+
+                    // Generate experiment3 mixed strategy comparison report
+                    std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>> reportData;
+
+                    // Add strategy comparison summary
+                    std::vector<std::pair<std::string, std::string>> strategyMetrics;
+                    strategyMetrics.push_back(std::make_pair("Strategy 1", "Instanced LOD (for performance-critical instances)"));
+                    strategyMetrics.push_back(std::make_pair("Strategy 2", "Non-instanced HLOD (for spatially distributed objects)"));
+                    strategyMetrics.push_back(std::make_pair("Combined Approach", "Use both strategies based on object properties"));
+
+                    reportData.push_back(std::make_pair("Mixed HLOD Strategy", strategyMetrics));
+
+                    ExperimentUtils::writeExperimentComparisonReport(config, "experiment3", reportData);
+                }
+
+                // Optional: Cleanup temp
+                if (tempInput) {
+                    // std::filesystem::remove_all(quadtreeInputPath); 
+                    // Keeping it might be useful for debug
+                }
+            }
+        }
+
+        GltfInstancing::logInfo("GltfInstancingTool finished successfully.");
+        return 0;
     }
-
-    // Stage 3: CSV Processing (Always run if configured)
-    processCsvAgainstGlb(config);
-
-    // --- Quadtree Pipeline Execution ---
-    // HLOD is now executed AFTER standard processing, using the results of Stage 1/2.
-    // NOTE: It requires separated GLB files. 
-    // If meshSegmentation was NOT enabled by user, we perform a temporary segmentation here for Quadtree.
-    if (config.enableQuadtree) {
-        GltfInstancing::logInfo("Quadtree Pipeline Enabled (Post-Processing Stage).");
-        
-        std::string quadtreeInputPath = "";
-        bool tempInput = false;
-
-        // 1. Determine Input Source
-        if (config.meshSegmentation) {
-             // User already generated segmented files, use them directly
-             quadtreeInputPath = (std::filesystem::path(config.outputDirectory) / "segmented_glb_output").string();
-             GltfInstancing::logInfo("Using existing segmented output for Quadtree input: " + quadtreeInputPath);
-        } else {
-             // We need to generate separated files from the non-instanced result of Stage 1
-             GltfInstancing::logInfo("Mesh segmentation was not enabled. Generating temporary separated GLBs for Quadtree input...");
-             
-             // Locate Non-Instanced Output from Stage 1
-             std::filesystem::path nonInstancedGlbPath = std::filesystem::path(config.outputDirectory) / "non_instanced_meshes.glb";
-             
-             if (std::filesystem::exists(nonInstancedGlbPath)) {
-                 std::filesystem::path tempOutputDir = std::filesystem::path(config.outputDirectory) / "quadtree_temp_input";
-                 std::filesystem::create_directories(tempOutputDir);
-                 
-                 GltfInstancing::GlbReader splitReader;
-                 std::set<std::filesystem::path> fileSet = { nonInstancedGlbPath };
-                 auto modelsToSplit = splitReader.loadGltfModels(fileSet);
-                 
-                 GltfInstancing::GlbWriter splitWriter;
-                 if (!modelsToSplit.empty()) {
-                     if (splitWriter.writeMeshesAsSeparateGlbs(modelsToSplit, tempOutputDir)) {
-                         quadtreeInputPath = tempOutputDir.string();
-                         tempInput = true; 
-                         GltfInstancing::logInfo("Generated temporary Quadtree input at: " + quadtreeInputPath);
-                     } else {
-                         GltfInstancing::logError("Failed to generate temporary separated GLBs.");
-                     }
-                 } else {
-                      GltfInstancing::logError("Failed to load non-instanced GLB for splitting: " + nonInstancedGlbPath.string());
-                 }
-             } else {
-                 GltfInstancing::logError("Non-instanced GLB not found (" + nonInstancedGlbPath.string() + "). Cannot run Quadtree Pipeline.");
-             }
-        }
-
-        // 2. Run Pipeline
-        if (!quadtreeInputPath.empty()) {
-            // Create a temporary config that points to the new input directory
-            ToolConfiguration quadConfig = config;
-            quadConfig.inputDirectory = quadtreeInputPath;
-            // Output to a subfolder to avoid overwriting standard output
-            quadConfig.outputDirectory = (std::filesystem::path(config.outputDirectory) / "quadtree_output").string();
-            
-            GltfInstancing::logInfo("Starting Quadtree Pipeline...");
-            
-            // Ensure Quadtree output directory exists
-            std::filesystem::create_directories(quadConfig.outputDirectory);
-
-            QuadtreePipeline::Pipeline pipeline(quadConfig);
-            pipeline.run();
-            GltfInstancing::logInfo("Quadtree Pipeline Finished. Output at: " + quadConfig.outputDirectory);
-            
-            // Optional: Cleanup temp
-             if (tempInput) {
-                 // std::filesystem::remove_all(quadtreeInputPath); 
-                 // Keeping it might be useful for debug
-             }
-        }
-    }
-
-    GltfInstancing::logInfo("GltfInstancingTool finished successfully.");
-    return 0;
 }
