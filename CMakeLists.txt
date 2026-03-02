@@ -54,6 +54,7 @@ set(PROJECT_SOURCES
     src/utilities.cpp
     src/NonInstancingLOD_manager.cpp
     src/experiment_utils.cpp
+    src/experiment_framework.cpp
     
     #src/utils.cpp
     #src/tileset_generator.cpp

@@ -1,0 +1,117 @@
+# =============================================================================
+# 实验配置文件模板
+# 用于GltfInstancingAndTilingTool的对比验证实验
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 基础配置
+# -----------------------------------------------------------------------------
+input_directory = D:/Data/BIM/住宅标准层
+tolerance = 0.05
+instance_limit = 3
+normal_tolerance = 0.1
+allow_non_uniform_scale_instancing = true
+
+# -----------------------------------------------------------------------------
+# 实验模式配置
+# -----------------------------------------------------------------------------
+# 启用实验模式 - 这将启用新的文件夹结构和输出格式
+enable_experiment_mode = true
+
+# 使用符号链接节省磁盘空间（Windows需要管理员权限）
+use_symbolic_links = false
+
+# -----------------------------------------------------------------------------
+# 实验1：实例化检测策略对比
+# -----------------------------------------------------------------------------
+# 运行实验1时，建议分别使用以下配置运行3次：
+
+# 配置A - Strict（严格）
+# tolerance = 0.00
+# instance_limit = 5
+# experiment_strategy_id = 01_Strict_0.00m
+
+# 配置B - Moderate（中等）
+# tolerance = 0.05
+# instance_limit = 3
+# experiment_strategy_id = 02_Moderate_0.05m
+
+# 配置C - Lenient（宽松）
+# tolerance = 0.10
+# instance_limit = 2
+# experiment_strategy_id = 03_Lenient_0.10m
+
+# 数据集名称 - 用于组织输出文件夹
+experiment_dataset_name = 住宅标准层
+
+# -----------------------------------------------------------------------------
+# 实验6：跨GLB HLOD构建策略对比
+# -----------------------------------------------------------------------------
+# 启用实验6（需要输入目录包含多个GLB文件）
+run_cross_glb_hlod_experiment = true
+
+# 实验6数据集名称
+experiment_dataset_name = 多楼层建筑
+
+# -----------------------------------------------------------------------------
+# LOD配置
+# -----------------------------------------------------------------------------
+enable_lod_generation = true
+lod_level_count = 5
+enable_semantic_check = true
+lod4_size_tolerance = 0.05
+lod3_aspect_ratio_tolerance = 0.20
+
+# -----------------------------------------------------------------------------
+# HLOD配置
+# -----------------------------------------------------------------------------
+enable_quadtree = true
+quadtree_max_depth = 6
+quadtree_max_objs = 50
+
+# HLOD实例化检测参数（可与主流程不同）
+hlod_tolerance = 0.05
+hlod_instance_limit = 3
+hlod_allow_non_uniform_scale_instancing = true
+
+# -----------------------------------------------------------------------------
+# 输出目录
+# -----------------------------------------------------------------------------
+output_directory = D:/Experiments/01_InstancingStrategy/dataset_住宅标准层/02_Moderate_0.05m
+
+# =============================================================================
+# 使用说明
+# =============================================================================
+#
+# 1. 实验1（实例化检测策略对比）使用方法：
+#    a) 创建3个配置文件，分别对应Strict/Moderate/Lenient
+#    b) 修改experiment_strategy_id和tolerance参数
+#    c) 分别运行3次，输出将自动组织到对应文件夹
+#    d) 使用scripts/generate_comparison.py生成对比报告
+#
+# 2. 实验6（跨GLB HLOD对比）使用方法：
+#    a) 准备包含多个GLB文件的输入目录
+#    b) 设置run_cross_glb_hlod_experiment = true
+#    c) 运行工具，将自动生成Merged和Separate两种策略的对比
+#
+# 3. 输出文件夹结构示例：
+#    experiments/
+#    ├── 01_InstancingStrategy/
+#    │   ├── dataset_住宅标准层/
+#    │   │   ├── 01_Strict_0.00m/
+#    │   │   │   ├── config.json
+#    │   │   │   ├── instancing_analysis.csv
+#    │   │   │   └── screenshots/
+#    │   │   ├── 02_Moderate_0.05m/
+#    │   │   ├── 03_Lenient_0.10m/
+#    │   │   └── comparison/
+#    │   │       ├── metrics_comparison.csv
+#    │   │       └── charts/
+#    │   └── summary/
+#    └── 06_CrossGLBHLOD/
+#        └── dataset_多楼层建筑/
+#            ├── A_MergedHLOD/
+#            ├── B_SeparateHLOD/
+#            └── comparison/
+#
+# =============================================================================

@@ -61,6 +61,11 @@ struct ToolConfiguration {
     std::string experiment2Name = "experiment2_lod_comparison";
     std::string experiment3Name = "experiment3_mixed_hlod";
 
+    // --- Experiment 6: Cross-GLB HLOD Configuration ---
+    bool runCrossGlbHLODExperiment = false;     // 是否运行实验6
+    std::string experimentDatasetName = "";      // 当前数据集名称
+    std::string experimentStrategyId = "";       // 当前策略ID
+
     // Default transform to place the model on Earth (User provided)
     std::vector<double> rootTransform = {
         -0.9023136427, 0.4310860309, 0.0, 0.0,

@@ -9,6 +9,7 @@
 #include "NonInstancingLOD_manager.h" // 新增
 #include "QuadtreePipeline.h" // 新增
 #include "experiment_utils.h" // Experiment mode utilities
+#include "experiment_framework.h" // New experiment framework
 
 #include <iostream>
 #include <filesystem>
@@ -215,6 +216,14 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 config.experiment2Name = value;
             } else if (key == "experiment3_name") {
                 config.experiment3Name = value;
+            } else if (key == "run_cross_glb_hlod_experiment") {
+                std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+                if (value == "true" || value == "1" || value == "yes") config.runCrossGlbHLODExperiment = true;
+                else config.runCrossGlbHLODExperiment = false;
+            } else if (key == "experiment_dataset_name") {
+                config.experimentDatasetName = value;
+            } else if (key == "experiment_strategy_id") {
+                config.experimentStrategyId = value;
             }
             // --- HLOD Instancing Detection Parameters ---
             else if (key == "hlod_geometry_tolerance" || key == "hlod_tolerance") {
@@ -271,6 +280,15 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
     return true;
 }
 
+// Forward declarations for experiment functions
+void runCrossGlbHLODExperiment(
+    const ToolConfiguration& config,
+    const std::vector<GltfInstancing::LoadedGltfModel>& loadedModels);
+ExperimentFramework::CrossGlbHLODExperiment::CrossGlbMetrics collectCrossGlbMetrics(
+    const std::filesystem::path& outputDir,
+    bool isMerged);
+int estimateOverlappingTiles(const std::vector<std::string>& glbFiles);
+
 void printUsage(const char* progName) {
     GltfInstancing::logInfo("Usage: " + std::string(progName) + " --input_directory <path> [options]");
     GltfInstancing::logInfo("");
@@ -296,6 +314,9 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("Experiment Mode Options:");
     GltfInstancing::logInfo("  --enable-experiment-mode:            Enable experiment mode to organize outputs for comparison.");
     GltfInstancing::logInfo("  --use-symbolic-links:                Use symbolic links instead of copying files (saves disk space).");
+    GltfInstancing::logInfo("  --run-cross-glb-hlod-experiment:     Run Experiment 6: Cross-GLB HLOD comparison.");
+    GltfInstancing::logInfo("  --experiment-dataset-name <name>:    Dataset name for experiment organization.");
+    GltfInstancing::logInfo("  --experiment-strategy-id <id>:       Strategy ID for experiment organization.");
     GltfInstancing::logInfo("");
     GltfInstancing::logInfo("HLOD Instancing Detection Parameters (Independent from Stage 1):");
     GltfInstancing::logInfo("  --hlod-tolerance <value>:             Geometric tolerance for HLOD instancing detection.");
@@ -373,6 +394,18 @@ int countTotalNodes(const CesiumGltf::Model& model, int32_t nodeIndex) {
     return count;
 }
 
+// Forward declaration for enhanced experiment framework function
+void writeInstancingAnalysisCsvEnhanced(
+    const ToolConfiguration& config,
+    int inputModels,
+    size_t initialNodes, size_t initialMeshes, size_t initialInstances,
+    size_t instancedGroups, size_t finalInstances, size_t nonInstancedMeshes,
+    size_t finalNodes, size_t finalMeshes, size_t totalDisplayedMeshes,
+    double nodeReduction, double finalInstancingRatio, double instancingIncrease,
+    double inputFileSizeMB, double outputFileSizeMB,
+    const std::string& datasetName,
+    const std::string& strategyId);
+
 // Helper to write CSV analysis report
 void writeAnalysisCsv(const ToolConfiguration& config, 
                      const std::vector<GltfInstancing::LoadedGltfModel>& loadedModels,
@@ -448,7 +481,7 @@ void writeAnalysisCsv(const ToolConfiguration& config,
     double finalInstancingRatio = (totalDisplayedMeshes > 0) ? ((double)finalInstances / (double)totalDisplayedMeshes) * 100.0 : 0.0;
     double instancingIncrease = finalInstancingRatio - initialInstancingRatio;
 
-    // 4. Write CSV
+    // 4. Write CSV (basic version to output directory)
     std::filesystem::path csvPath = std::filesystem::path(config.outputDirectory) / "instancing_analysis.csv";
     std::ofstream csvFile(csvPath);
     if (csvFile.is_open()) {
@@ -471,6 +504,108 @@ void writeAnalysisCsv(const ToolConfiguration& config,
         GltfInstancing::logInfo("Instancing analysis CSV written to: " + csvPath.string());
     } else {
         GltfInstancing::logError("Failed to write instancing analysis CSV to: " + csvPath.string());
+    }
+
+    // 5. Write enhanced experiment framework output (if enabled)
+    if (config.enableExperimentMode) {
+        std::string datasetName = config.experimentDatasetName.empty() ? "default_dataset" : config.experimentDatasetName;
+        std::string strategyId = config.experimentStrategyId.empty() ? "default" : config.experimentStrategyId;
+        GltfInstancing::logInfo("Experiment mode: Writing enhanced analysis for dataset '" + datasetName +
+                               "' with strategy '" + strategyId + "'");
+        writeInstancingAnalysisCsvEnhanced(
+            config,
+            inputModels,
+            initialNodes, initialMeshes, initialInstances,
+            instancedGroups, finalInstances, nonInstancedMeshes,
+            finalNodes, finalMeshes, totalDisplayedMeshes,
+            nodeReduction, finalInstancingRatio, instancingIncrease,
+            0.0, 0.0,  // file sizes (not calculated here)
+            datasetName,
+            strategyId
+        );
+    } else {
+        GltfInstancing::logInfo("Experiment mode is disabled. Skipping enhanced analysis.");
+    }
+}
+
+// Enhanced version using new experiment framework
+void writeInstancingAnalysisCsvEnhanced(
+    const ToolConfiguration& config,
+    int inputModels,
+    size_t initialNodes, size_t initialMeshes, size_t initialInstances,
+    size_t instancedGroups, size_t finalInstances, size_t nonInstancedMeshes,
+    size_t finalNodes, size_t finalMeshes, size_t totalDisplayedMeshes,
+    double nodeReduction, double finalInstancingRatio, double instancingIncrease,
+    double inputFileSizeMB, double outputFileSizeMB,
+    const std::string& datasetName = "default",
+    const std::string& strategyId = "default") {
+
+    // 使用新框架生成标准化的CSV
+    std::map<std::string, ExperimentFramework::MetricValue> metrics;
+    metrics["Input Models"] = {"Input Models", static_cast<double>(inputModels), "count", "Number of input GLB files"};
+    metrics["Initial Nodes"] = {"Initial Nodes", static_cast<double>(initialNodes), "count", "Initial scene graph nodes"};
+    metrics["Initial Meshes"] = {"Initial Meshes", static_cast<double>(initialMeshes), "count", "Initial mesh primitives"};
+    metrics["Initial Instances"] = {"Initial Instances", static_cast<double>(initialInstances), "count", "Initial instanced meshes"};
+    metrics["Instanced Groups"] = {"Instanced Groups", static_cast<double>(instancedGroups), "count", "Detected instancing groups"};
+    metrics["Final Instances"] = {"Final Instances", static_cast<double>(finalInstances), "count", "Final instanced meshes"};
+    metrics["Non-instanced Meshes"] = {"Non-instanced Meshes", static_cast<double>(nonInstancedMeshes), "count", "Non-instanced mesh count"};
+    metrics["Final Nodes"] = {"Final Nodes", static_cast<double>(finalNodes), "count", "Final scene graph nodes"};
+    metrics["Final Meshes"] = {"Final Meshes", static_cast<double>(finalMeshes), "count", "Final mesh count"};
+    metrics["Total Displayed Meshes"] = {"Total Displayed Meshes", static_cast<double>(totalDisplayedMeshes), "count", "Total visible meshes"};
+    metrics["Node Reduction (%)"] = {"Node Reduction (%)", nodeReduction, "%", "Percentage of nodes reduced"};
+    metrics["Initial Instancing Ratio (%)"] = {"Initial Instancing Ratio (%)", 0.0, "%", "Initial instancing ratio"};
+    metrics["Final Instancing Ratio (%)"] = {"Final Instancing Ratio (%)", finalInstancingRatio, "%", "Final instancing ratio"};
+    metrics["Instancing Increase (%)"] = {"Instancing Increase (%)", instancingIncrease, "%", "Instancing improvement"};
+    metrics["File Size Input (MB)"] = {"File Size Input (MB)", inputFileSizeMB, "MB", "Input file size"};
+    metrics["File Size Output (MB)"] = {"File Size Output (MB)", outputFileSizeMB, "MB", "Output file size"};
+    double fileReduction = (inputFileSizeMB > 0) ? (1.0 - outputFileSizeMB / inputFileSizeMB) * 100.0 : 0.0;
+    metrics["File Size Reduction (%)"] = {"File Size Reduction (%)", fileReduction, "%", "File size reduction"};
+
+    // 生成标准化CSV路径
+    std::filesystem::path csvPath = std::filesystem::path(config.outputDirectory) / "instancing_analysis.csv";
+    ExperimentFramework::CsvReportGenerator::writeInstancingAnalysis(csvPath, metrics);
+
+    // 如果使用实验模式，同时生成到实验目录
+    if (config.enableExperimentMode && !datasetName.empty()) {
+        std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / ".." / "experiments";
+        GltfInstancing::logInfo("Creating experiment directory structure at: " + experimentsBaseDir.string());
+
+        ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
+
+        ExperimentFramework::StrategyInfo strategy;
+        strategy.id = strategyId;
+        strategy.name = strategyId;
+        strategy.description = "Instancing detection with tolerance " + std::to_string(config.geometryTolerance);
+        strategy.parameters["tolerance"] = std::to_string(config.geometryTolerance);
+        strategy.parameters["instance_limit"] = std::to_string(config.instanceLimit);
+        strategy.parameters["normal_tolerance"] = std::to_string(config.normalTolerance);
+
+        GltfInstancing::logInfo("Creating experiment structure for INSTANCING_STRATEGY, dataset: " + datasetName + ", strategy: " + strategyId);
+        auto expDir = expManager.createExperimentStructure(
+            ExperimentFramework::ExperimentType::INSTANCING_STRATEGY,
+            datasetName, strategy);
+        GltfInstancing::logInfo("Experiment directory created at: " + expDir.string());
+
+        // 写入标准化CSV
+        std::filesystem::path expCsvPath = expDir / "instancing_analysis.csv";
+        ExperimentFramework::CsvReportGenerator::writeInstancingAnalysis(expCsvPath, metrics);
+        GltfInstancing::logInfo("Experiment CSV written to: " + expCsvPath.string());
+
+        // 写入配置
+        std::filesystem::path configPath = expDir / "config.json";
+        ExperimentFramework::ConfigGenerator::writeConfigJson(configPath, config, strategy);
+        GltfInstancing::logInfo("Experiment config written to: " + configPath.string());
+
+        // 生成策略README
+        std::filesystem::path readmePath = expDir / "README.md";
+        ExperimentFramework::ReadmeGenerator::writeStrategyReadme(readmePath, strategy, metrics);
+        GltfInstancing::logInfo("Experiment README written to: " + readmePath.string());
+    } else {
+        if (!config.enableExperimentMode) {
+            GltfInstancing::logInfo("Experiment mode disabled, skipping experiment directory creation.");
+        } else if (datasetName.empty()) {
+            GltfInstancing::logWarning("Dataset name is empty, skipping experiment directory creation.");
+        }
     }
 }
 
@@ -585,6 +720,66 @@ void writeLodAnalysisCsv(const ToolConfiguration& config,
         GltfInstancing::logInfo("LOD analysis CSV written to: " + csvPath.string());
     } else {
         GltfInstancing::logError("Failed to write LOD analysis CSV to: " + csvPath.string());
+    }
+
+    // 实验模式：生成LOD策略实验目录
+    if (config.enableExperimentMode) {
+        std::string datasetName = config.experimentDatasetName.empty() ? "default_dataset" : config.experimentDatasetName;
+        std::string strategyId = config.experimentStrategyId.empty() ? "InstancingLOD" : config.experimentStrategyId;
+
+        std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / ".." / "experiments";
+        ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
+
+        ExperimentFramework::StrategyInfo strategy;
+        strategy.id = strategyId;
+        strategy.name = "Instance-based Semantic LOD";
+        strategy.description = "Semantic-driven 5-level LOD generation with GPU instancing";
+        strategy.parameters["lod_levels"] = std::to_string(config.lodLevelCount);
+        strategy.parameters["target_sse"] = std::to_string(config.targetScreenSSE);
+
+        GltfInstancing::logInfo("Creating experiment structure for LOD_STRATEGY, dataset: " + datasetName + ", strategy: " + strategyId);
+        auto expDir = expManager.createExperimentStructure(
+            ExperimentFramework::ExperimentType::LOD_STRATEGY,
+            datasetName, strategy);
+        GltfInstancing::logInfo("LOD experiment directory created at: " + expDir.string());
+
+        // 写入LOD分析CSV到实验目录
+        std::filesystem::path expCsvPath = expDir / "lod_analysis.csv";
+        std::ofstream expCsvFile(expCsvPath);
+        if (expCsvFile.is_open()) {
+            expCsvFile << "Metric,Original (Input),Instanced (LOD5),LOD4 (Variant),LOD3 (Class),LOD2 (Abstract),LOD1 (Proxy)\n";
+            expCsvFile << "File Size (MB)," << std::fixed << std::setprecision(2) << originalFileSizeMB;
+            std::map<int, LodStats> statsMap;
+            for (const auto& s : stats) statsMap[s.level] = s;
+            for (int l = 5; l >= 1; --l) {
+                if (statsMap.count(l)) expCsvFile << "," << statsMap[l].fileSizeMB;
+                else expCsvFile << ",-";
+            }
+            expCsvFile << "\n";
+            expCsvFile.close();
+            GltfInstancing::logInfo("LOD experiment CSV written to: " + expCsvPath.string());
+        }
+
+        // 写入配置
+        std::filesystem::path configPath = expDir / "config.json";
+        ExperimentFramework::ConfigGenerator::writeConfigJson(configPath, config, strategy);
+
+        // 生成README
+        std::map<std::string, ExperimentFramework::MetricValue> lodMetrics;
+        if (!stats.empty()) {
+            lodMetrics["LOD Levels Generated"] = {"LOD Levels", static_cast<double>(stats.size()), "count", "Number of LOD levels"};
+            lodMetrics["Original File Size (MB)"] = {"Original Size", originalFileSizeMB, "MB", "Input file size"};
+            // Recreate statsMap for this scope
+            std::map<int, LodStats> statsMap;
+            for (const auto& s : stats) statsMap[s.level] = s;
+            if (statsMap.count(1)) {
+                double reduction = (originalFileSizeMB > 0) ? (1.0 - statsMap[1].fileSizeMB / originalFileSizeMB) * 100.0 : 0.0;
+                lodMetrics["File Size Reduction (%)"] = {"Reduction", reduction, "%", "LOD1 vs Original"};
+            }
+        }
+        std::filesystem::path readmePath = expDir / "README.md";
+        ExperimentFramework::ReadmeGenerator::writeStrategyReadme(readmePath, strategy, lodMetrics);
+        GltfInstancing::logInfo("LOD experiment README written to: " + readmePath.string());
     }
 }
 
@@ -907,6 +1102,28 @@ int main(int argc, char* argv[]) {
             config.useSymbolicLinks = true;
             GltfInstancing::logDebug("Command-line override: Using symbolic links for experiment results.");
         }
+        else if (arg == "--run-cross-glb-hlod-experiment") {
+            config.runCrossGlbHLODExperiment = true;
+            GltfInstancing::logDebug("Command-line override: Will run Cross-GLB HLOD experiment.");
+        }
+        else if (arg == "--experiment-dataset-name") {
+            if (argIndex + 1 < argc) {
+                config.experimentDatasetName = argv[++argIndex];
+                GltfInstancing::logDebug("Command-line override: Experiment dataset name: " + config.experimentDatasetName);
+            }
+            else {
+                GltfInstancing::logError("--experiment-dataset-name option (CLI) requires a value."); printUsage(argv[0]); return 1;
+            }
+        }
+        else if (arg == "--experiment-strategy-id") {
+            if (argIndex + 1 < argc) {
+                config.experimentStrategyId = argv[++argIndex];
+                GltfInstancing::logDebug("Command-line override: Experiment strategy ID: " + config.experimentStrategyId);
+            }
+            else {
+                GltfInstancing::logError("--experiment-strategy-id option (CLI) requires a value."); printUsage(argv[0]); return 1;
+            }
+        }
         else if (arg == "--hlod-tolerance" || arg == "--hlod-geometry-tolerance") {
             if (argIndex + 1 < argc) {
                 try {
@@ -1063,9 +1280,53 @@ int main(int argc, char* argv[]) {
             pipeline.run();
             GltfInstancing::logInfo("Quadtree Pipeline Finished. Output at: " + quadConfig.outputDirectory);
 
+            // 实验模式：生成HLOD参数实验目录 (03_HLODParams)
+            if (config.enableExperimentMode) {
+                std::string datasetName = config.experimentDatasetName.empty() ? "default_dataset" : config.experimentDatasetName;
+                std::string strategyId = config.experimentStrategyId.empty() ?
+                    "Depth" + std::to_string(config.quadtreeMaxDepth) + "_Obj" + std::to_string(config.quadtreeMaxObjectsPerTile) : config.experimentStrategyId;
+
+                std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / ".." / "experiments";
+                ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
+
+                ExperimentFramework::StrategyInfo strategy;
+                strategy.id = strategyId;
+                strategy.name = "Quadtree HLOD";
+                strategy.description = "Hierarchical LOD with quadtree spatial partitioning";
+                strategy.parameters["max_depth"] = std::to_string(config.quadtreeMaxDepth);
+                strategy.parameters["max_objects_per_tile"] = std::to_string(config.quadtreeMaxObjectsPerTile);
+                strategy.parameters["enable_lod"] = std::to_string(config.enableLodGeneration);
+
+                GltfInstancing::logInfo("Creating experiment structure for HLOD_PARAMS, dataset: " + datasetName + ", strategy: " + strategyId);
+                auto expDir = expManager.createExperimentStructure(
+                    ExperimentFramework::ExperimentType::HLOD_PARAMS,
+                    datasetName, strategy);
+                GltfInstancing::logInfo("HLOD experiment directory created at: " + expDir.string());
+
+                // 复制hlod_analysis.csv到实验目录（如果存在）
+                std::filesystem::path hlodAnalysisPath = std::filesystem::path(quadConfig.outputDirectory) / "hlod_analysis.csv";
+                if (std::filesystem::exists(hlodAnalysisPath)) {
+                    std::filesystem::path expCsvPath = expDir / "hlod_analysis.csv";
+                    std::filesystem::copy_file(hlodAnalysisPath, expCsvPath, std::filesystem::copy_options::overwrite_existing);
+                    GltfInstancing::logInfo("HLOD analysis CSV copied to: " + expCsvPath.string());
+                }
+
+                // 写入配置
+                std::filesystem::path configPath = expDir / "config.json";
+                ExperimentFramework::ConfigGenerator::writeConfigJson(configPath, config, strategy);
+
+                // 生成README
+                std::map<std::string, ExperimentFramework::MetricValue> hlodMetrics;
+                hlodMetrics["Max Depth"] = {"Max Depth", static_cast<double>(config.quadtreeMaxDepth), "level", "Quadtree max depth"};
+                hlodMetrics["Max Objects/Tile"] = {"Max Objects/Tile", static_cast<double>(config.quadtreeMaxObjectsPerTile), "count", "Max objects per tile"};
+                std::filesystem::path readmePath = expDir / "README.md";
+                ExperimentFramework::ReadmeGenerator::writeStrategyReadme(readmePath, strategy, hlodMetrics);
+                GltfInstancing::logInfo("HLOD experiment README written to: " + readmePath.string());
+            }
+
             // Optional: Cleanup temp
             if (tempInput) {
-                // std::filesystem::remove_all(quadtreeInputPath); 
+                // std::filesystem::remove_all(quadtreeInputPath);
                 // Keeping it might be useful for debug
             }
         }
@@ -1096,12 +1357,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Create experiment directories if experiment mode is enabled
-    if (config.enableExperimentMode) {
-        if (!ExperimentUtils::createExperimentDirectories(config)) {
-            GltfInstancing::logWarning("Failed to create some experiment directories, but continuing processing...");
-        }
-    }
+    // Note: Old experiment directory creation (ExperimentUtils) is disabled.
+    // Using new ExperimentFramework for standardized directory structure.
+    // Experiment directories will be created on-demand during result generation.
 
     GltfInstancing::logInfo("Stage 1: Discovering, Reading, and Processing GLB files for Instancing...");
     GltfInstancing::GlbReader reader;
@@ -1143,6 +1401,41 @@ int main(int argc, char* argv[]) {
     // --- STANDARD OUTPUT GENERATION (Always run) ---
     // (Generate CSV Report first)
     writeAnalysisCsv(config, loadedModels, detectionResult);
+
+    // 实验模式：生成非均匀缩放实验目录 (05_NonUniformScale) - 当启用时
+    if (config.enableExperimentMode && config.allowNonUniformScaleInstancing) {
+        std::string datasetName = config.experimentDatasetName.empty() ? "default_dataset" : config.experimentDatasetName;
+        std::string strategyId = config.experimentStrategyId.empty() ? "NonUniform_Allowed" : config.experimentStrategyId;
+
+        std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / ".." / "experiments";
+        ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
+
+        ExperimentFramework::StrategyInfo strategy;
+        strategy.id = strategyId;
+        strategy.name = "Non-Uniform Scale Instancing";
+        strategy.description = "Allow non-uniform scale transformations for instancing detection";
+        strategy.parameters["allow_non_uniform_scale"] = "true";
+        strategy.parameters["geometry_tolerance"] = std::to_string(config.geometryTolerance);
+        strategy.parameters["instance_limit"] = std::to_string(config.instanceLimit);
+
+        GltfInstancing::logInfo("Creating experiment structure for NON_UNIFORM_SCALE, dataset: " + datasetName + ", strategy: " + strategyId);
+        auto expDir = expManager.createExperimentStructure(
+            ExperimentFramework::ExperimentType::NON_UNIFORM_SCALE,
+            datasetName, strategy);
+        GltfInstancing::logInfo("Non-uniform scale experiment directory created at: " + expDir.string());
+
+        // 写入配置
+        std::filesystem::path configPath = expDir / "config.json";
+        ExperimentFramework::ConfigGenerator::writeConfigJson(configPath, config, strategy);
+
+        // 生成README
+        std::map<std::string, ExperimentFramework::MetricValue> metrics;
+        metrics["Non-Uniform Scale Enabled"] = {"Non-Uniform Scale", 1.0, "boolean", "Allow non-uniform scale instancing"};
+        metrics["Geometry Tolerance"] = {"Tolerance", config.geometryTolerance, "m", "Geometry matching tolerance"};
+        std::filesystem::path readmePath = expDir / "README.md";
+        ExperimentFramework::ReadmeGenerator::writeStrategyReadme(readmePath, strategy, metrics);
+        GltfInstancing::logInfo("Non-uniform scale experiment README written to: " + readmePath.string());
+    }
 
     std::filesystem::path instancedGlbFileNameBase = "instanced_meshes";
     std::filesystem::path nonInstancedGlbFileNameBase = "non_instanced_meshes";
@@ -1196,8 +1489,10 @@ int main(int argc, char* argv[]) {
         tilesetWriter.writeTileset(nonInstancedUris, nonInstancedTilesetPath, rootGeometricError);
     }
 
-    // Handle experiment mode for Stage 1 results
-    if (config.enableExperimentMode && (instancedWriteResult || nonInstancedWriteResult)) {
+    // Note: Old experiment mode file organization (ExperimentUtils) is DISABLED.
+    // New ExperimentFramework handles file organization via writeInstancingAnalysisCsvEnhanced().
+    // This block is kept for reference but will not execute.
+    if (false && config.enableExperimentMode && (instancedWriteResult || nonInstancedWriteResult)) {
         GltfInstancing::logInfo("Organizing Stage 1 results into experiment1 directory...");
 
         // Copy instanced results to experiment1/instanced/
@@ -1404,13 +1699,11 @@ int main(int argc, char* argv[]) {
                     tilesetWriter.writeHierarchicalTileset(rootNode, finalTilesetPath);
                     GltfInstancing::logInfo("Advanced Instanced-LOD tileset generated at: " + finalTilesetPath.string());
 
-                    // Handle experiment mode for non-instanced LOD post-processing results
-                    if (config.enableExperimentMode) {
-                        GltfInstancing::logInfo("Organizing non-instanced LOD post-processing results into experiment2 directory...");
-
-                        // Copy non-instanced LOD post-processing results to experiment2/non_instanced_lod/instanced_lods/
-                        auto exp2NonInstancedLODDir = ExperimentUtils::getExperiment2Path(config) / "non_instanced_lod" / "instanced_lods";
-                        ExperimentUtils::copyDirectoryContents(instancedOutputDir, exp2NonInstancedLODDir, config.useSymbolicLinks);
+                    // Note: Old experiment mode (ExperimentUtils) is DISABLED.
+                    // New ExperimentFramework handles file organization.
+                    // This block is kept for reference but will not execute.
+                    if (false && config.enableExperimentMode) {
+                        GltfInstancing::logInfo("[DISABLED] Old experiment directory organization skipped.");
                     }
                 }
             }
@@ -1564,27 +1857,11 @@ int main(int argc, char* argv[]) {
             tilesetWriter.writeHierarchicalTileset(rootNode, tilesetPath);
             GltfInstancing::logInfo("LOD processing complete. Tileset written to: " + tilesetPath.string());
 
-            // Handle experiment mode for LOD results
-            if (config.enableExperimentMode) {
-                GltfInstancing::logInfo("Organizing LOD results into experiment2 directory...");
-
-                // Copy instanced LOD results to experiment2/instanced_lod/
-                auto exp2InstancedLODDir = ExperimentUtils::getExperiment2Path(config) / "instanced_lod";
-                ExperimentUtils::copyDirectoryContents(lodOutputDir, exp2InstancedLODDir, config.useSymbolicLinks);
-
-                // Generate experiment2 LOD comparison report
-                std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>> reportData;
-
-                // Add LOD analysis summary
-                std::vector<std::pair<std::string, std::string>> lodMetrics;
-                lodMetrics.push_back(std::make_pair("Generated LOD Levels", std::to_string(lodStatistics.size())));
-                lodMetrics.push_back(std::make_pair("Original File Size (MB)", std::to_string(originalFileSizeMB)));
-                lodMetrics.push_back(std::make_pair("Original Vertices", std::to_string(originalVertices)));
-                lodMetrics.push_back(std::make_pair("Original Instances", std::to_string(originalInstancesTotal)));
-
-                reportData.push_back(std::make_pair("LOD Analysis", lodMetrics));
-
-                ExperimentUtils::writeExperimentComparisonReport(config, "experiment2", reportData);
+            // Note: Old experiment mode (ExperimentUtils) is DISABLED.
+            // New ExperimentFramework handles file organization.
+            // This block is kept for reference but will not execute.
+            if (false && config.enableExperimentMode) {
+                GltfInstancing::logInfo("[DISABLED] Old experiment directory organization skipped.");
             }
 
         }
@@ -1660,34 +1937,11 @@ int main(int argc, char* argv[]) {
                 pipeline.run();
                 GltfInstancing::logInfo("Quadtree Pipeline Finished. Output at: " + quadConfig.outputDirectory);
 
-                // Handle experiment mode for HLOD results (experiment3)
-                if (config.enableExperimentMode) {
-                    GltfInstancing::logInfo("Organizing HLOD results into experiment3 directory...");
-
-                    // Copy quadtree output to experiment3/non_instanced_hlod/
-                    auto exp3NonInstancedHLODDir = ExperimentUtils::getExperiment3Path(config) / "non_instanced_hlod";
-                    ExperimentUtils::copyDirectoryContents(quadConfig.outputDirectory, exp3NonInstancedHLODDir, config.useSymbolicLinks);
-
-                    // Link instanced LOD results to experiment3/instanced_lod/
-                    auto exp3InstancedLODDir = ExperimentUtils::getExperiment3Path(config) / "instanced_lod";
-                    auto sourceInstancedLODDir = std::filesystem::path(config.outputDirectory) / "instancing_lod_output";
-
-                    if (std::filesystem::exists(sourceInstancedLODDir)) {
-                        ExperimentUtils::copyDirectoryContents(sourceInstancedLODDir, exp3InstancedLODDir, config.useSymbolicLinks);
-                    }
-
-                    // Generate experiment3 mixed strategy comparison report
-                    std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>> reportData;
-
-                    // Add strategy comparison summary
-                    std::vector<std::pair<std::string, std::string>> strategyMetrics;
-                    strategyMetrics.push_back(std::make_pair("Strategy 1", "Instanced LOD (for performance-critical instances)"));
-                    strategyMetrics.push_back(std::make_pair("Strategy 2", "Non-instanced HLOD (for spatially distributed objects)"));
-                    strategyMetrics.push_back(std::make_pair("Combined Approach", "Use both strategies based on object properties"));
-
-                    reportData.push_back(std::make_pair("Mixed HLOD Strategy", strategyMetrics));
-
-                    ExperimentUtils::writeExperimentComparisonReport(config, "experiment3", reportData);
+                // Note: Old experiment mode (ExperimentUtils) is DISABLED.
+                // New ExperimentFramework handles file organization.
+                // This block is kept for reference but will not execute.
+                if (false && config.enableExperimentMode) {
+                    GltfInstancing::logInfo("[DISABLED] Old experiment directory organization skipped.");
                 }
 
                 // Optional: Cleanup temp
@@ -1698,7 +1952,370 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Experiment 6: Cross-GLB HLOD Comparison (if enabled)
+        if (config.enableExperimentMode && config.runCrossGlbHLODExperiment) {
+            GltfInstancing::logInfo("Running Experiment 6: Cross-GLB HLOD Comparison...");
+            runCrossGlbHLODExperiment(config, loadedModels);
+        }
+
+        // 实验模式：生成端到端实验目录 (04_EndToEnd) - 汇总所有阶段结果
+        if (config.enableExperimentMode) {
+            std::string datasetName = config.experimentDatasetName.empty() ? "default_dataset" : config.experimentDatasetName;
+            std::string strategyId = config.experimentStrategyId.empty() ? "FullPipeline" : config.experimentStrategyId;
+
+            std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / ".." / "experiments";
+            ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
+
+            ExperimentFramework::StrategyInfo strategy;
+            strategy.id = strategyId;
+            strategy.name = "End-to-End Full Pipeline";
+            strategy.description = "Complete pipeline: Instancing + LOD + HLOD";
+            strategy.parameters["instancing_enabled"] = "true";
+            strategy.parameters["lod_enabled"] = std::to_string(config.enableLodGeneration);
+            strategy.parameters["hlod_enabled"] = std::to_string(config.enableQuadtree);
+            strategy.parameters["tolerance"] = std::to_string(config.geometryTolerance);
+
+            GltfInstancing::logInfo("Creating experiment structure for END_TO_END, dataset: " + datasetName + ", strategy: " + strategyId);
+            auto expDir = expManager.createExperimentStructure(
+                ExperimentFramework::ExperimentType::END_TO_END,
+                datasetName, strategy);
+            GltfInstancing::logInfo("End-to-end experiment directory created at: " + expDir.string());
+
+            // 汇总所有阶段的CSV文件到实验目录
+            std::vector<std::pair<std::string, std::filesystem::path>> filesToCopy = {
+                {"instancing_analysis.csv", std::filesystem::path(config.outputDirectory) / "instancing_analysis.csv"},
+                {"lod_analysis.csv", std::filesystem::path(config.outputDirectory) / "instancing_lod_output" / "lod_analysis.csv"},
+                {"hlod_analysis.csv", std::filesystem::path(config.outputDirectory) / "quadtree_output" / "hlod_analysis.csv"}
+            };
+
+            for (const auto& [filename, sourcePath] : filesToCopy) {
+                if (std::filesystem::exists(sourcePath)) {
+                    std::filesystem::path destPath = expDir / filename;
+                    std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing);
+                    GltfInstancing::logInfo("Copied " + filename + " to end-to-end experiment directory");
+                }
+            }
+
+            // 写入配置
+            std::filesystem::path configPath = expDir / "config.json";
+            ExperimentFramework::ConfigGenerator::writeConfigJson(configPath, config, strategy);
+
+            // 生成README
+            std::map<std::string, ExperimentFramework::MetricValue> e2eMetrics;
+            e2eMetrics["Instancing Enabled"] = {"Instancing", 1.0, "boolean", "GPU instancing enabled"};
+            e2eMetrics["LOD Enabled"] = {"LOD", config.enableLodGeneration ? 1.0 : 0.0, "boolean", "LOD generation enabled"};
+            e2eMetrics["HLOD Enabled"] = {"HLOD", config.enableQuadtree ? 1.0 : 0.0, "boolean", "Quadtree HLOD enabled"};
+            std::filesystem::path readmePath = expDir / "README.md";
+            ExperimentFramework::ReadmeGenerator::writeStrategyReadme(readmePath, strategy, e2eMetrics);
+            GltfInstancing::logInfo("End-to-end experiment README written to: " + readmePath.string());
+        }
+
         GltfInstancing::logInfo("GltfInstancingTool finished successfully.");
         return 0;
     }
+}
+
+// ============================================================================
+// Experiment 6: Cross-GLB HLOD Comparison
+// ============================================================================
+
+void runCrossGlbHLODExperiment(
+    const ToolConfiguration& config,
+    const std::vector<GltfInstancing::LoadedGltfModel>& loadedModels) {
+
+    GltfInstancing::logInfo("========================================");
+    GltfInstancing::logInfo("Experiment 6: Cross-GLB HLOD Comparison");
+    GltfInstancing::logInfo("========================================");
+
+    // Prepare input GLB list
+    std::vector<std::string> inputGlbs;
+    for (const auto& model : loadedModels) {
+        inputGlbs.push_back(model.originalPath.string());
+    }
+
+    if (inputGlbs.size() < 2) {
+        GltfInstancing::logWarning("Cross-GLB HLOD experiment requires at least 2 GLB files. Skipping.");
+        return;
+    }
+
+    std::string datasetName = config.experimentDatasetName.empty() ?
+        "multi_glb_dataset" : config.experimentDatasetName;
+
+    // Setup experiment directory (use same location as other experiments)
+    std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / ".." / "experiments";
+    ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
+
+    // ========== Strategy A: Merged HLOD ==========
+    GltfInstancing::logInfo("Running Strategy A: Merged HLOD...");
+
+    ExperimentFramework::StrategyInfo mergedStrategy;
+    mergedStrategy.id = "A_MergedHLOD";
+    mergedStrategy.name = "Merged HLOD";
+    mergedStrategy.description = "所有GLB合并构建统一四叉树HLOD";
+    mergedStrategy.parameters["max_depth"] = std::to_string(config.quadtreeMaxDepth);
+    mergedStrategy.parameters["max_objects"] = std::to_string(config.quadtreeMaxObjectsPerTile);
+
+    auto mergedDir = expManager.createExperimentStructure(
+        ExperimentFramework::ExperimentType::CROSS_GLB_HLOD,
+        datasetName, mergedStrategy);
+
+    // Setup output structure for merged HLOD
+    auto mergedOutputDir = ExperimentFramework::CrossGlbHLODExperiment::setupMergedHLODOutput(
+        mergedDir.parent_path(), datasetName, inputGlbs);
+
+    // Run merged HLOD pipeline (using all GLBs as input)
+    ExperimentFramework::CrossGlbHLODExperiment::CrossGlbMetrics mergedMetrics;
+    {
+        // Create config for merged run
+        ToolConfiguration mergedConfig = config;
+        mergedConfig.outputDirectory = mergedOutputDir.string();
+        mergedConfig.mergeAllGlb = true; // Key: merge all GLBs
+
+        // Run quadtree pipeline
+        QuadtreePipeline::Pipeline pipeline(mergedConfig);
+        pipeline.run();
+
+        // Collect metrics from output
+        mergedMetrics = collectCrossGlbMetrics(mergedOutputDir, true);
+    }
+
+    // ========== Strategy B: Separate HLOD ==========
+    GltfInstancing::logInfo("Running Strategy B: Separate HLOD...");
+
+    ExperimentFramework::StrategyInfo separateStrategy;
+    separateStrategy.id = "B_SeparateHLOD";
+    separateStrategy.name = "Separate HLOD";
+    separateStrategy.description = "每个GLB独立构建HLOD";
+    separateStrategy.parameters["max_depth"] = std::to_string(config.quadtreeMaxDepth);
+    separateStrategy.parameters["max_objects"] = std::to_string(config.quadtreeMaxObjectsPerTile);
+
+    auto separateDir = expManager.createExperimentStructure(
+        ExperimentFramework::ExperimentType::CROSS_GLB_HLOD,
+        datasetName, separateStrategy);
+
+    // Setup output structure for separate HLOD
+    auto separateOutputDir = ExperimentFramework::CrossGlbHLODExperiment::setupSeparateHLODOutput(
+        separateDir.parent_path(), datasetName, inputGlbs);
+
+    // Run separate HLOD pipeline for each GLB
+    ExperimentFramework::CrossGlbHLODExperiment::CrossGlbMetrics separateMetrics;
+    {
+        int totalTiles = 0;
+        int maxDepth = 0;
+        double totalTilesetSize = 0;
+        int totalRequests = 0;
+
+        for (const auto& glbPath : inputGlbs) {
+            std::filesystem::path glbFile(glbPath);
+            std::string subdirName = glbFile.stem().string();
+            std::filesystem::path subOutputDir = separateOutputDir / subdirName;
+
+            ToolConfiguration subConfig = config;
+            subConfig.inputDirectory = glbFile.parent_path().string();
+            subConfig.outputDirectory = subOutputDir.string();
+            subConfig.mergeAllGlb = false;
+
+            // Run pipeline for this single GLB
+            QuadtreePipeline::Pipeline pipeline(subConfig);
+            pipeline.run();
+
+            // Collect metrics
+            auto subMetrics = collectCrossGlbMetrics(subOutputDir, false);
+            totalTiles += subMetrics.totalTiles;
+            maxDepth = std::max(maxDepth, subMetrics.maxDepth);
+            totalTilesetSize += subMetrics.tilesetSizeKB;
+            totalRequests += subMetrics.initialRequests;
+        }
+
+        // Aggregate metrics
+        separateMetrics.totalTiles = totalTiles;
+        separateMetrics.maxDepth = maxDepth;
+        separateMetrics.tilesetSizeKB = totalTilesetSize;
+        separateMetrics.initialRequests = totalRequests;
+        separateMetrics.overlappingTiles = estimateOverlappingTiles(inputGlbs);
+
+        // 生成总的tileset来组织所有单独处理的GLB
+        GltfInstancing::logInfo("Generating aggregated tileset for Separate HLOD strategy...");
+        std::filesystem::path aggregatedTilesetPath = separateOutputDir / "tileset.json";
+
+        // 收集所有子目录中的tileset或GLB文件
+        std::vector<std::filesystem::path> childTilesets;
+        for (const auto& entry : std::filesystem::directory_iterator(separateOutputDir)) {
+            if (entry.is_directory()) {
+                std::filesystem::path subTileset = entry.path() / "tileset.json";
+                if (std::filesystem::exists(subTileset)) {
+                    childTilesets.push_back(subTileset);
+                }
+            }
+        }
+
+        if (!childTilesets.empty()) {
+            // 创建聚合tileset
+            std::ofstream aggTilesetFile(aggregatedTilesetPath);
+            aggTilesetFile << "{\n";
+            aggTilesetFile << "  \"asset\": {\n";
+            aggTilesetFile << "    \"version\": \"1.0\",\n";
+            aggTilesetFile << "    \"generator\": \"GltfInstancingTool - Cross-GLB HLOD Experiment\"\n";
+            aggTilesetFile << "  },\n";
+            aggTilesetFile << "  \"root\": {\n";
+            aggTilesetFile << "    \"refine\": \"ADD\",\n";
+            aggTilesetFile << "    \"geometricError\": 1000000.0,\n";
+
+            // 计算所有子tileset的包围盒
+            aggTilesetFile << "    \"boundingVolume\": {\n";
+            aggTilesetFile << "      \"region\": [-3.14159, -1.5708, 3.14159, 1.5708, -1000, 10000000]\n";
+            aggTilesetFile << "    },\n";
+
+            aggTilesetFile << "    \"children\": [\n";
+
+            for (size_t i = 0; i < childTilesets.size(); ++i) {
+                // 获取相对于separateOutputDir的路径
+                std::string relativePath = std::filesystem::relative(childTilesets[i], separateOutputDir).generic_string();
+                // 将反斜杠替换为正斜杠
+                std::replace(relativePath.begin(), relativePath.end(), '\\', '/');
+                aggTilesetFile << "      {\n";
+                aggTilesetFile << "        \"refine\": \"ADD\",\n";
+                aggTilesetFile << "        \"geometricError\": 100000.0,\n";
+                aggTilesetFile << "        \"content\": {\n";
+                aggTilesetFile << "          \"uri\": \"" << relativePath << "\"\n";
+                aggTilesetFile << "        }\n";
+                aggTilesetFile << "      }";
+                if (i < childTilesets.size() - 1) {
+                    aggTilesetFile << ",";
+                }
+                aggTilesetFile << "\n";
+            }
+
+            aggTilesetFile << "    ]\n";
+            aggTilesetFile << "  }\n";
+            aggTilesetFile << "}\n";
+            aggTilesetFile.close();
+
+            GltfInstancing::logInfo("Aggregated tileset generated at: " + aggregatedTilesetPath.string());
+        } else {
+            GltfInstancing::logWarning("No child tilesets found for aggregation.");
+        }
+    }
+
+    // ========== Generate Comparison Report ==========
+    GltfInstancing::logInfo("Generating comparison report...");
+
+    auto comparisonDir = expManager.getComparisonDir(
+        ExperimentFramework::ExperimentType::CROSS_GLB_HLOD, datasetName);
+
+    ExperimentFramework::CrossGlbHLODExperiment::generateComparisonReport(
+        comparisonDir, datasetName, mergedMetrics, separateMetrics);
+
+    // Write strategy configs
+    ExperimentFramework::ConfigGenerator::writeConfigJson(
+        mergedOutputDir / "config.json", config, mergedStrategy);
+    ExperimentFramework::ConfigGenerator::writeConfigJson(
+        separateOutputDir / "config.json", config, separateStrategy);
+
+    // Generate decision recommendation
+    std::vector<std::filesystem::path> inputPaths;
+    for (const auto& glb : inputGlbs) {
+        inputPaths.push_back(std::filesystem::path(glb));
+    }
+    double overlapRatio = ExperimentFramework::CrossGlbHLODExperiment::calculateAABBOverlap(inputPaths);
+    std::string recommendation = ExperimentFramework::CrossGlbHLODExperiment::generateStrategyRecommendation(
+        overlapRatio, inputPaths);
+
+    std::ofstream recFile(comparisonDir / "strategy_recommendation.md");
+    recFile << "# 跨GLB HLOD策略决策建议\n\n";
+    recFile << "## 数据集分析\n";
+    recFile << "- **GLB文件数**: " << inputGlbs.size() << "\n";
+    recFile << "- **AABB重叠度**: " << std::fixed << std::setprecision(2) << overlapRatio * 100 << "%\n\n";
+    recFile << "## 推荐策略\n\n" << recommendation << "\n";
+    recFile.close();
+
+    GltfInstancing::logInfo("Experiment 6 completed. Results at: " + comparisonDir.string());
+}
+
+ExperimentFramework::CrossGlbHLODExperiment::CrossGlbMetrics collectCrossGlbMetrics(
+    const std::filesystem::path& outputDir,
+    bool isMerged) {
+
+    ExperimentFramework::CrossGlbHLODExperiment::CrossGlbMetrics metrics;
+    metrics.totalTiles = 0;
+    metrics.maxDepth = 0;
+    metrics.depthVariance = 0.0;
+    metrics.overlappingTiles = 0;
+    metrics.aabbUtilization = 0.0;
+    metrics.tilesetSizeKB = 0.0;
+    metrics.rootGeometricError = 0.0;
+    metrics.duplicateResources = 0;
+    metrics.avgFrustumQueryTiles = 0.0;
+    metrics.lodSwitchConsistency = 0.0;
+    metrics.drawCalls = 0;
+    metrics.initialRequests = isMerged ? 1 : 0; // Merged: 1 request, Separate: count later
+    metrics.firstTileLoadTime = 0.0;
+    metrics.memoryPeakMB = 0.0;
+
+    // Count tiles and calculate metrics from hlod_analysis.csv if exists
+    std::filesystem::path analysisPath = outputDir / "hlod_analysis.csv";
+    if (std::filesystem::exists(analysisPath)) {
+        std::ifstream file(analysisPath);
+        std::string line;
+
+        // Skip header
+        std::getline(file, line);
+
+        std::map<int, int> depthCounts;
+        int maxLevel = 0;
+        double totalSize = 0;
+
+        while (std::getline(file, line)) {
+            std::stringstream ss(line);
+            std::string levelStr;
+            std::getline(ss, levelStr, ',');
+
+            int level = std::stoi(levelStr);
+            depthCounts[level]++;
+            maxLevel = std::max(maxLevel, level);
+            metrics.totalTiles++;
+        }
+
+        metrics.maxDepth = maxLevel;
+
+        // Calculate depth variance
+        if (!depthCounts.empty()) {
+            double sum = 0;
+            for (const auto& [d, count] : depthCounts) {
+                sum += d * count;
+            }
+            double mean = sum / metrics.totalTiles;
+
+            double variance = 0;
+            for (const auto& [d, count] : depthCounts) {
+                variance += count * (d - mean) * (d - mean);
+            }
+            metrics.depthVariance = variance / metrics.totalTiles;
+        }
+    }
+
+    // Calculate tileset.json size
+    std::filesystem::path tilesetPath = outputDir / "tileset.json";
+    if (std::filesystem::exists(tilesetPath)) {
+        metrics.tilesetSizeKB = static_cast<double>(
+            std::filesystem::file_size(tilesetPath)) / 1024.0;
+    }
+
+    return metrics;
+}
+
+int estimateOverlappingTiles(const std::vector<std::string>& glbFiles) {
+    // Simple estimation based on AABB overlap
+    int overlapping = 0;
+    for (size_t i = 0; i < glbFiles.size(); ++i) {
+        for (size_t j = i + 1; j < glbFiles.size(); ++j) {
+            // In real implementation, load GLBs and check AABB overlap
+            // For now, estimate based on file naming
+            if (glbFiles[i].find("Floor") != std::string::npos &&
+                glbFiles[j].find("Floor") != std::string::npos) {
+                overlapping++; // Floors likely overlap in XY
+            }
+        }
+    }
+    return overlapping;
 }

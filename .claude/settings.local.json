@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(chcp:*)",
-      "Bash(g++:*)"
+      "Bash(g++:*)",
+      "Bash(powershell -Command:*)"
     ]
   }
 }
