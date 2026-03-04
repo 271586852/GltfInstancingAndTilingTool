@@ -3,7 +3,9 @@
     "allow": [
       "Bash(chcp:*)",
       "Bash(g++:*)",
-      "Bash(powershell -Command:*)"
+      "Bash(powershell -Command:*)",
+      "Bash(cmake --build:*)",
+      "Bash(move /Y:*)"
     ]
   }
 }
