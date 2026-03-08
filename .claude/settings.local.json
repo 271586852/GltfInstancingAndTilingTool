@@ -5,7 +5,11 @@
       "Bash(g++:*)",
       "Bash(powershell -Command:*)",
       "Bash(cmake --build:*)",
-      "Bash(move /Y:*)"
+      "Bash(move /Y:*)",
+      "Bash(ls -la:*)",
+      "Bash(python3 -c:*)",
+      "Bash(unzip -p:*)",
+      "Bash(python3:*)"
     ]
   }
 }

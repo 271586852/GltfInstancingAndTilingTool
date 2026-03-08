@@ -231,7 +231,8 @@ public:
         const std::filesystem::path& outputDir,
         const std::string& datasetName,
         const CrossGlbMetrics& mergedMetrics,
-        const CrossGlbMetrics& separateMetrics
+        const CrossGlbMetrics& separateMetrics,
+        const CrossGlbMetrics* separateSingleEntryMetrics = nullptr
     );
 
     // 计算空间重叠度（用于决策建议）

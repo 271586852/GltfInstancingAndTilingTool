@@ -14,6 +14,8 @@
 #include <set>
 #include <sstream>
 #include <algorithm>
+#include <array>
+#include <limits>
 #include <nlohmann/json.hpp>
 
 namespace Experiment6 {
@@ -22,6 +24,319 @@ namespace Experiment6 {
 ExperimentFramework::CrossGlbHLODExperiment::CrossGlbMetrics collectCrossGlbMetrics(
     const std::filesystem::path& outputDir, bool isMerged);
 int estimateOverlappingTiles(const std::vector<std::string>& glbFiles);
+
+namespace {
+
+using Box12 = std::array<double, 12>;
+using Mat16 = std::array<double, 16>;
+
+struct ExternalTilesetInfo {
+    bool loaded = false;
+    bool hasValidBox = false;
+    Box12 worldBox{};
+    double geometricError = 1000.0;
+};
+
+Mat16 makeIdentityTransform() {
+    return Mat16{
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0
+    };
+}
+
+bool parseBox12(const nlohmann::json& boxJson, Box12& outBox) {
+    if (!boxJson.is_array() || boxJson.size() != 12) {
+        return false;
+    }
+    for (size_t i = 0; i < outBox.size(); ++i) {
+        if (!boxJson[i].is_number()) {
+            return false;
+        }
+        outBox[i] = boxJson[i].get<double>();
+    }
+    return true;
+}
+
+Mat16 parseTransformOrIdentity(const nlohmann::json& rootJson) {
+    if (rootJson.contains("transform") &&
+        rootJson["transform"].is_array() &&
+        rootJson["transform"].size() == 16) {
+        Mat16 transform{};
+        bool valid = true;
+        for (size_t i = 0; i < transform.size(); ++i) {
+            if (!rootJson["transform"][i].is_number()) {
+                valid = false;
+                break;
+            }
+            transform[i] = rootJson["transform"][i].get<double>();
+        }
+        if (valid) {
+            return transform;
+        }
+    }
+    return makeIdentityTransform();
+}
+
+std::array<double, 3> transformPoint(const Mat16& m, double x, double y, double z) {
+    // 3D Tiles transform uses column-major order.
+    return {
+        m[0] * x + m[4] * y + m[8] * z + m[12],
+        m[1] * x + m[5] * y + m[9] * z + m[13],
+        m[2] * x + m[6] * y + m[10] * z + m[14]
+    };
+}
+
+std::array<double, 3> transformVector(const Mat16& m, double x, double y, double z) {
+    return {
+        m[0] * x + m[4] * y + m[8] * z,
+        m[1] * x + m[5] * y + m[9] * z,
+        m[2] * x + m[6] * y + m[10] * z
+    };
+}
+
+Box12 transformOrientedBox(const Box12& box, const Mat16& transform) {
+    auto center = transformPoint(transform, box[0], box[1], box[2]);
+    auto hx = transformVector(transform, box[3], box[4], box[5]);
+    auto hy = transformVector(transform, box[6], box[7], box[8]);
+    auto hz = transformVector(transform, box[9], box[10], box[11]);
+    return Box12{
+        center[0], center[1], center[2],
+        hx[0], hx[1], hx[2],
+        hy[0], hy[1], hy[2],
+        hz[0], hz[1], hz[2]
+    };
+}
+
+void expandAabbByBoxCorners(
+    const Box12& box,
+    std::array<double, 3>& minV,
+    std::array<double, 3>& maxV) {
+    const std::array<double, 3> c{ box[0], box[1], box[2] };
+    const std::array<double, 3> u{ box[3], box[4], box[5] };
+    const std::array<double, 3> v{ box[6], box[7], box[8] };
+    const std::array<double, 3> w{ box[9], box[10], box[11] };
+
+    for (int su : {-1, 1}) {
+        for (int sv : {-1, 1}) {
+            for (int sw : {-1, 1}) {
+                std::array<double, 3> p{
+                    c[0] + su * u[0] + sv * v[0] + sw * w[0],
+                    c[1] + su * u[1] + sv * v[1] + sw * w[1],
+                    c[2] + su * u[2] + sv * v[2] + sw * w[2]
+                };
+                minV[0] = std::min(minV[0], p[0]);
+                minV[1] = std::min(minV[1], p[1]);
+                minV[2] = std::min(minV[2], p[2]);
+                maxV[0] = std::max(maxV[0], p[0]);
+                maxV[1] = std::max(maxV[1], p[1]);
+                maxV[2] = std::max(maxV[2], p[2]);
+            }
+        }
+    }
+}
+
+Box12 aabbToBox(const std::array<double, 3>& minV, const std::array<double, 3>& maxV) {
+    const double cx = (minV[0] + maxV[0]) * 0.5;
+    const double cy = (minV[1] + maxV[1]) * 0.5;
+    const double cz = (minV[2] + maxV[2]) * 0.5;
+    const double ex = (maxV[0] - minV[0]) * 0.5;
+    const double ey = (maxV[1] - minV[1]) * 0.5;
+    const double ez = (maxV[2] - minV[2]) * 0.5;
+    return Box12{ cx, cy, cz, ex, 0.0, 0.0, 0.0, ey, 0.0, 0.0, 0.0, ez };
+}
+
+ExternalTilesetInfo loadExternalTilesetInfo(const std::filesystem::path& tilesetPath) {
+    ExternalTilesetInfo info;
+
+    std::ifstream in(tilesetPath);
+    if (!in.is_open()) {
+        return info;
+    }
+
+    nlohmann::json tilesetJson;
+    try {
+        in >> tilesetJson;
+    } catch (...) {
+        return info;
+    }
+    info.loaded = true;
+
+    if (tilesetJson.contains("root") && tilesetJson["root"].is_object()) {
+        const auto& rootJson = tilesetJson["root"];
+        if (rootJson.contains("geometricError") && rootJson["geometricError"].is_number()) {
+            info.geometricError = rootJson["geometricError"].get<double>();
+        } else if (tilesetJson.contains("geometricError") && tilesetJson["geometricError"].is_number()) {
+            info.geometricError = tilesetJson["geometricError"].get<double>();
+        }
+
+        if (rootJson.contains("boundingVolume") &&
+            rootJson["boundingVolume"].is_object() &&
+            rootJson["boundingVolume"].contains("box")) {
+            Box12 localBox{};
+            if (parseBox12(rootJson["boundingVolume"]["box"], localBox)) {
+                Mat16 rootTransform = parseTransformOrIdentity(rootJson);
+                info.worldBox = transformOrientedBox(localBox, rootTransform);
+                info.hasValidBox = true;
+            }
+        }
+    }
+    return info;
+}
+
+nlohmann::json boxToJson(const Box12& box) {
+    return nlohmann::json::array({
+        box[0], box[1], box[2],
+        box[3], box[4], box[5],
+        box[6], box[7], box[8],
+        box[9], box[10], box[11]
+    });
+}
+
+void rebaseTileContentUris(nlohmann::json& tileJson, const std::string& prefix) {
+    if (prefix.empty()) {
+        return;
+    }
+
+    if (tileJson.contains("content") && tileJson["content"].is_object() &&
+        tileJson["content"].contains("uri") && tileJson["content"]["uri"].is_string()) {
+        tileJson["content"]["uri"] = prefix + tileJson["content"]["uri"].get<std::string>();
+    }
+
+    if (tileJson.contains("contents") && tileJson["contents"].is_array()) {
+        for (auto& contentJson : tileJson["contents"]) {
+            if (contentJson.is_object() &&
+                contentJson.contains("uri") &&
+                contentJson["uri"].is_string()) {
+                contentJson["uri"] = prefix + contentJson["uri"].get<std::string>();
+            }
+        }
+    }
+
+    if (tileJson.contains("children") && tileJson["children"].is_array()) {
+        for (auto& childJson : tileJson["children"]) {
+            if (childJson.is_object()) {
+                rebaseTileContentUris(childJson, prefix);
+            }
+        }
+    }
+}
+
+bool writeInlineAggregatedTileset(
+    const std::filesystem::path& parentOutputDir,
+    const std::vector<std::filesystem::path>& childTilesets,
+    const std::string& strategyName) {
+    if (childTilesets.empty()) {
+        return false;
+    }
+
+    nlohmann::json tilesetJson;
+    tilesetJson["asset"]["version"] = "1.1";
+
+    nlohmann::json rootJson;
+    rootJson["refine"] = "ADD";
+
+    nlohmann::json children = nlohmann::json::array();
+    std::vector<Box12> childBoxes;
+    double maxChildError = 0.0;
+
+    for (const auto& childPath : childTilesets) {
+        std::ifstream in(childPath);
+        if (!in.is_open()) {
+            GltfInstancing::logWarning("[" + strategyName + "] Cannot open child tileset: " + childPath.string());
+            continue;
+        }
+
+        nlohmann::json childTilesetJson;
+        try {
+            in >> childTilesetJson;
+        } catch (...) {
+            GltfInstancing::logWarning("[" + strategyName + "] Invalid child tileset json: " + childPath.string());
+            continue;
+        }
+
+        if (!childTilesetJson.contains("root") || !childTilesetJson["root"].is_object()) {
+            GltfInstancing::logWarning("[" + strategyName + "] Child tileset has no valid root: " + childPath.string());
+            continue;
+        }
+
+        nlohmann::json childRoot = childTilesetJson["root"];
+
+        std::string prefix = std::filesystem::relative(childPath.parent_path(), parentOutputDir).generic_string();
+        std::replace(prefix.begin(), prefix.end(), '\\', '/');
+        if (!prefix.empty() && prefix.back() != '/') {
+            prefix += "/";
+        }
+        rebaseTileContentUris(childRoot, prefix);
+
+        ExternalTilesetInfo childInfo = loadExternalTilesetInfo(childPath);
+        if (!childRoot.contains("geometricError") || !childRoot["geometricError"].is_number()) {
+            childRoot["geometricError"] = std::max(1.0, childInfo.geometricError);
+        }
+
+        if (!childRoot.contains("refine") || !childRoot["refine"].is_string()) {
+            childRoot["refine"] = "ADD";
+        }
+
+        if (childInfo.hasValidBox) {
+            childBoxes.push_back(childInfo.worldBox);
+        } else {
+            Box12 fallbackBox{0.0, 0.0, 0.0, 100000.0, 0.0, 0.0, 0.0, 100000.0, 0.0, 0.0, 0.0, 100000.0};
+            childBoxes.push_back(fallbackBox);
+            if (!childRoot.contains("boundingVolume") || !childRoot["boundingVolume"].is_object()) {
+                childRoot["boundingVolume"] = nlohmann::json::object();
+            }
+            if (!childRoot["boundingVolume"].contains("box")) {
+                childRoot["boundingVolume"]["box"] = boxToJson(fallbackBox);
+            }
+        }
+
+        maxChildError = std::max(maxChildError, childRoot["geometricError"].get<double>());
+        children.push_back(childRoot);
+    }
+
+    if (children.empty()) {
+        return false;
+    }
+
+    if (!childBoxes.empty()) {
+        std::array<double, 3> minV{
+            std::numeric_limits<double>::max(),
+            std::numeric_limits<double>::max(),
+            std::numeric_limits<double>::max()
+        };
+        std::array<double, 3> maxV{
+            std::numeric_limits<double>::lowest(),
+            std::numeric_limits<double>::lowest(),
+            std::numeric_limits<double>::lowest()
+        };
+        for (const auto& box : childBoxes) {
+            expandAabbByBoxCorners(box, minV, maxV);
+        }
+        rootJson["boundingVolume"]["box"] = boxToJson(aabbToBox(minV, maxV));
+    } else {
+        rootJson["boundingVolume"]["box"] = boxToJson(
+            Box12{0.0, 0.0, 0.0, 500000.0, 0.0, 0.0, 0.0, 500000.0, 0.0, 0.0, 0.0, 500000.0});
+    }
+
+    rootJson["children"] = children;
+    rootJson["geometricError"] = std::max(1000.0, maxChildError * 2.0);
+    tilesetJson["geometricError"] = rootJson["geometricError"];
+    tilesetJson["root"] = rootJson;
+
+    const std::filesystem::path outputPath = parentOutputDir / "tileset.json";
+    std::ofstream outFile(outputPath);
+    if (!outFile.is_open()) {
+        return false;
+    }
+    outFile << tilesetJson.dump(2);
+    outFile.close();
+    GltfInstancing::logInfo("[" + strategyName + "] Inline aggregated tileset: " + outputPath.string());
+    return true;
+}
+
+} // namespace
 
 // Write unified tileset for a directory containing instancing_lod_output and quadtree_output
 void writeUnifiedTileset(const std::filesystem::path& outputDir, const std::string& strategyName) {
@@ -32,44 +347,78 @@ void writeUnifiedTileset(const std::filesystem::path& outputDir, const std::stri
     // Use nlohmann::json to construct proper 3D Tiles 1.1 tileset
     nlohmann::json tilesetJson;
     tilesetJson["asset"]["version"] = "1.1";
-    tilesetJson["geometricError"] = 1000000.0;
 
     nlohmann::json rootJson;
     rootJson["refine"] = "ADD";
-    rootJson["geometricError"] = 1000000.0;
 
-    // Use box format for bounding volume (more reliable than region)
-    // Center at origin with large extents
-    rootJson["boundingVolume"]["box"] = {0.0, 0.0, 0.0, 500000.0, 0.0, 0.0, 0.0, 500000.0, 0.0, 0.0, 0.0, 500000.0};
-
-    // Transform (standard GLB Y-up to Z-up conversion)
-    rootJson["transform"] = {
-        -0.9023136427, 0.4310860309, 0.0, 0.0,
-        0.3731804153, 0.7899661139, 0.4899996041, 0.0,
-        0.2117562093, 0.4431713488, -0.8716388481, 0.0,
-        -2418525.0442296155, 5374967.3619212005, 2429440.0912170662, 1.0
-    };
+    // NOTE: Do NOT set transform here. Child tilesets (instancing_lod_output/tileset.json
+    // and quadtree_output/tileset.json) already have their own transform matrices.
+    // Setting transform here would cause double transformation.
 
     nlohmann::json children = nlohmann::json::array();
+    std::vector<Box12> childBoxes;
+    double maxChildError = 0.0;
 
     if (std::filesystem::exists(lodTilesetPath)) {
+        ExternalTilesetInfo lodInfo = loadExternalTilesetInfo(lodTilesetPath);
         nlohmann::json lodChild;
         lodChild["refine"] = "ADD";
-        lodChild["geometricError"] = 100000.0;
+        lodChild["geometricError"] = std::max(1.0, lodInfo.geometricError);
         lodChild["content"]["uri"] = "instancing_lod_output/tileset.json";
-        // Use a smaller box for child
-        lodChild["boundingVolume"]["box"] = {0.0, 0.0, 0.0, 100000.0, 0.0, 0.0, 0.0, 100000.0, 0.0, 0.0, 0.0, 100000.0};
+        if (lodInfo.hasValidBox) {
+            lodChild["boundingVolume"]["box"] = boxToJson(lodInfo.worldBox);
+            childBoxes.push_back(lodInfo.worldBox);
+        } else {
+            Box12 fallbackBox{0.0, 0.0, 0.0, 100000.0, 0.0, 0.0, 0.0, 100000.0, 0.0, 0.0, 0.0, 100000.0};
+            lodChild["boundingVolume"]["box"] = boxToJson(fallbackBox);
+            childBoxes.push_back(fallbackBox);
+            GltfInstancing::logWarning("[" + strategyName + "] Missing/invalid boundingVolume in " + lodTilesetPath.string() + ", using fallback box.");
+        }
+        maxChildError = std::max(maxChildError, lodChild["geometricError"].get<double>());
         children.push_back(lodChild);
     }
 
     if (std::filesystem::exists(quadtreeTilesetPath)) {
+        ExternalTilesetInfo quadInfo = loadExternalTilesetInfo(quadtreeTilesetPath);
         nlohmann::json quadChild;
         quadChild["refine"] = "ADD";
-        quadChild["geometricError"] = 50000.0;
+        quadChild["geometricError"] = std::max(1.0, quadInfo.geometricError);
         quadChild["content"]["uri"] = "quadtree_output/tileset.json";
-        quadChild["boundingVolume"]["box"] = {0.0, 0.0, 0.0, 50000.0, 0.0, 0.0, 0.0, 50000.0, 0.0, 0.0, 0.0, 50000.0};
+        if (quadInfo.hasValidBox) {
+            quadChild["boundingVolume"]["box"] = boxToJson(quadInfo.worldBox);
+            childBoxes.push_back(quadInfo.worldBox);
+        } else {
+            Box12 fallbackBox{0.0, 0.0, 0.0, 100000.0, 0.0, 0.0, 0.0, 100000.0, 0.0, 0.0, 0.0, 100000.0};
+            quadChild["boundingVolume"]["box"] = boxToJson(fallbackBox);
+            childBoxes.push_back(fallbackBox);
+            GltfInstancing::logWarning("[" + strategyName + "] Missing/invalid boundingVolume in " + quadtreeTilesetPath.string() + ", using fallback box.");
+        }
+        maxChildError = std::max(maxChildError, quadChild["geometricError"].get<double>());
         children.push_back(quadChild);
     }
+
+    if (!childBoxes.empty()) {
+        std::array<double, 3> minV{
+            std::numeric_limits<double>::max(),
+            std::numeric_limits<double>::max(),
+            std::numeric_limits<double>::max()
+        };
+        std::array<double, 3> maxV{
+            std::numeric_limits<double>::lowest(),
+            std::numeric_limits<double>::lowest(),
+            std::numeric_limits<double>::lowest()
+        };
+        for (const auto& box : childBoxes) {
+            expandAabbByBoxCorners(box, minV, maxV);
+        }
+        rootJson["boundingVolume"]["box"] = boxToJson(aabbToBox(minV, maxV));
+    } else {
+        rootJson["boundingVolume"]["box"] = boxToJson(
+            Box12{0.0, 0.0, 0.0, 500000.0, 0.0, 0.0, 0.0, 500000.0, 0.0, 0.0, 0.0, 500000.0});
+    }
+
+    rootJson["geometricError"] = std::max(1000.0, maxChildError * 2.0);
+    tilesetJson["geometricError"] = rootJson["geometricError"];
 
     if (!children.empty()) {
         rootJson["children"] = children;
@@ -464,28 +813,55 @@ void runExperiment6(
 
             nlohmann::json rootJson;
             rootJson["refine"] = "ADD";
-            rootJson["geometricError"] = 1000000.0;
-            rootJson["boundingVolume"]["box"] = {0.0, 0.0, 0.0, 500000.0, 0.0, 0.0, 0.0, 500000.0, 0.0, 0.0, 0.0, 500000.0};
-            rootJson["transform"] = {
-                -0.9023136427, 0.4310860309, 0.0, 0.0,
-                0.3731804153, 0.7899661139, 0.4899996041, 0.0,
-                0.2117562093, 0.4431713488, -0.8716388481, 0.0,
-                -2418525.0442296155, 5374967.3619212005, 2429440.0912170662, 1.0
-            };
+            // NOTE: Child tilesets already have their own transform, don't set it here
 
             nlohmann::json children = nlohmann::json::array();
+            std::vector<Box12> childBoxes;
+            double maxChildError = 0.0;
             for (const auto& childPath : childTilesets) {
                 std::string relativePath = std::filesystem::relative(
                     childPath, separateOutputDir).generic_string();
                 std::replace(relativePath.begin(), relativePath.end(), '\\', '/');
 
+                ExternalTilesetInfo childInfo = loadExternalTilesetInfo(childPath);
                 nlohmann::json childJson;
                 childJson["refine"] = "ADD";
-                childJson["geometricError"] = 100000.0;
+                childJson["geometricError"] = std::max(1.0, childInfo.geometricError);
                 childJson["content"]["uri"] = relativePath;
-                childJson["boundingVolume"]["box"] = {0.0, 0.0, 0.0, 100000.0, 0.0, 0.0, 0.0, 100000.0, 0.0, 0.0, 0.0, 100000.0};
+                if (childInfo.hasValidBox) {
+                    childJson["boundingVolume"]["box"] = boxToJson(childInfo.worldBox);
+                    childBoxes.push_back(childInfo.worldBox);
+                } else {
+                    Box12 fallbackBox{0.0, 0.0, 0.0, 100000.0, 0.0, 0.0, 0.0, 100000.0, 0.0, 0.0, 0.0, 100000.0};
+                    childJson["boundingVolume"]["box"] = boxToJson(fallbackBox);
+                    childBoxes.push_back(fallbackBox);
+                    GltfInstancing::logWarning("Missing/invalid boundingVolume in " + childPath.string() + ", using fallback box.");
+                }
+                maxChildError = std::max(maxChildError, childJson["geometricError"].get<double>());
                 children.push_back(childJson);
             }
+
+            if (!childBoxes.empty()) {
+                std::array<double, 3> minV{
+                    std::numeric_limits<double>::max(),
+                    std::numeric_limits<double>::max(),
+                    std::numeric_limits<double>::max()
+                };
+                std::array<double, 3> maxV{
+                    std::numeric_limits<double>::lowest(),
+                    std::numeric_limits<double>::lowest(),
+                    std::numeric_limits<double>::lowest()
+                };
+                for (const auto& box : childBoxes) {
+                    expandAabbByBoxCorners(box, minV, maxV);
+                }
+                rootJson["boundingVolume"]["box"] = boxToJson(aabbToBox(minV, maxV));
+            } else {
+                rootJson["boundingVolume"]["box"] = boxToJson(
+                    Box12{0.0, 0.0, 0.0, 500000.0, 0.0, 0.0, 0.0, 500000.0, 0.0, 0.0, 0.0, 500000.0});
+            }
+            rootJson["geometricError"] = std::max(1000.0, maxChildError * 2.0);
+            tilesetJson["geometricError"] = rootJson["geometricError"];
 
             if (!children.empty()) {
                 rootJson["children"] = children;
@@ -502,13 +878,88 @@ void runExperiment6(
         }
     }
 
+    // ========== Strategy C: Separate + Single Entry ==========
+    GltfInstancing::logInfo("Running Strategy C: Separate + Single Entry...");
+
+    StrategyInfo separateSingleEntryStrategy;
+    separateSingleEntryStrategy.id = "C_SeparateSingleEntryHLOD";
+    separateSingleEntryStrategy.name = "Separate HLOD + Single Entry";
+    separateSingleEntryStrategy.description = "每个GLB独立构建InstancingLOD + Quadtree HLOD，但使用单入口内联tileset";
+    separateSingleEntryStrategy.parameters["max_depth"] = std::to_string(config.quadtreeMaxDepth);
+    separateSingleEntryStrategy.parameters["max_objects"] = std::to_string(config.quadtreeMaxObjectsPerTile);
+    separateSingleEntryStrategy.parameters["aggregate_mode"] = "inline_single_entry";
+
+    auto separateSingleEntryDir = expManager.createExperimentStructure(
+        ExperimentType::CROSS_GLB_HLOD, datasetName, separateSingleEntryStrategy);
+    auto separateSingleEntryOutputDir = separateSingleEntryDir.parent_path() / "C_SeparateSingleEntryHLOD";
+    std::filesystem::create_directories(separateSingleEntryOutputDir);
+
+    // Reuse B strategy generated per-GLB outputs to avoid duplicate heavy pipeline run.
+    std::ofstream cListFile(separateSingleEntryOutputDir / "input_files.txt");
+    for (const auto& f : inputGlbs) {
+        cListFile << f << "\n";
+    }
+    cListFile.close();
+
+    std::vector<std::filesystem::path> cChildTilesets;
+    for (const auto& glbPathStr : inputGlbs) {
+        std::filesystem::path glbPath(glbPathStr);
+        std::string subdirName = glbPath.stem().string();
+        std::filesystem::path srcSubDir = separateOutputDir / subdirName;
+        std::filesystem::path dstSubDir = separateSingleEntryOutputDir / subdirName;
+        if (std::filesystem::exists(srcSubDir)) {
+            std::error_code ec;
+            std::filesystem::copy(
+                srcSubDir,
+                dstSubDir,
+                std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing,
+                ec);
+            if (ec) {
+                GltfInstancing::logWarning("Failed to copy " + srcSubDir.string() + " to C strategy output: " + ec.message());
+            }
+            std::filesystem::path dstTilesetPath = dstSubDir / "tileset.json";
+            if (std::filesystem::exists(dstTilesetPath)) {
+                cChildTilesets.push_back(dstTilesetPath);
+            }
+        }
+    }
+
+    if (!writeInlineAggregatedTileset(
+            separateSingleEntryOutputDir,
+            cChildTilesets,
+            "C_SeparateSingleEntryHLOD")) {
+        GltfInstancing::logWarning("Failed to generate C strategy inline aggregated tileset.");
+    }
+
+    auto separateSingleEntryMetrics = collectCrossGlbMetrics(separateSingleEntryOutputDir, false);
+
     // Generate comparison report
     auto comparisonDir = expManager.getComparisonDir(ExperimentType::CROSS_GLB_HLOD, datasetName);
-    CrossGlbHLODExperiment::generateComparisonReport(comparisonDir, datasetName, mergedMetrics, separateMetrics);
+    CrossGlbHLODExperiment::generateComparisonReport(
+        comparisonDir,
+        datasetName,
+        mergedMetrics,
+        separateMetrics,
+        &separateSingleEntryMetrics);
+
+    // Additional C strategy summary for ablation (single-entry separate strategy).
+    {
+        std::ofstream cReport(comparisonDir / "strategy_c_metrics.txt");
+        if (cReport.is_open()) {
+            cReport << "Strategy C (Separate + Single Entry) Metrics\n";
+            cReport << "Dataset: " << datasetName << "\n\n";
+            cReport << "Total Tiles: " << separateSingleEntryMetrics.totalTiles << "\n";
+            cReport << "Max Depth: " << separateSingleEntryMetrics.maxDepth << "\n";
+            cReport << "Tileset Size (KB): " << separateSingleEntryMetrics.tilesetSizeKB << "\n";
+            cReport << "Initial Requests: " << separateSingleEntryMetrics.initialRequests << "\n";
+            cReport.close();
+        }
+    }
 
     // Write configs
     ConfigGenerator::writeConfigJson(mergedOutputDir / "config.json", config, mergedStrategy);
     ConfigGenerator::writeConfigJson(separateOutputDir / "config.json", config, separateStrategy);
+    ConfigGenerator::writeConfigJson(separateSingleEntryOutputDir / "config.json", config, separateSingleEntryStrategy);
 
     GltfInstancing::logInfo("Experiment 6 completed. Results at: " + comparisonDir.string());
 }

@@ -459,7 +459,8 @@ bool CrossGlbHLODExperiment::generateComparisonReport(
     const std::filesystem::path& outputDir,
     const std::string& datasetName,
     const CrossGlbMetrics& mergedMetrics,
-    const CrossGlbMetrics& separateMetrics) {
+    const CrossGlbMetrics& separateMetrics,
+    const CrossGlbMetrics* separateSingleEntryMetrics) {
 
     // 生成空间结构对比CSV
     std::map<std::string, std::map<std::string, double>> spatialData;
@@ -474,6 +475,13 @@ bool CrossGlbHLODExperiment::generateComparisonReport(
     spatialData["Separate"]["Depth Variance"] = separateMetrics.depthVariance;
     spatialData["Separate"]["Overlapping Tiles"] = separateMetrics.overlappingTiles;
     spatialData["Separate"]["AABB Utilization (%)"] = separateMetrics.aabbUtilization * 100;
+    if (separateSingleEntryMetrics != nullptr) {
+        spatialData["SeparateSingleEntry"]["Total Tiles"] = separateSingleEntryMetrics->totalTiles;
+        spatialData["SeparateSingleEntry"]["Max Depth"] = separateSingleEntryMetrics->maxDepth;
+        spatialData["SeparateSingleEntry"]["Depth Variance"] = separateSingleEntryMetrics->depthVariance;
+        spatialData["SeparateSingleEntry"]["Overlapping Tiles"] = separateSingleEntryMetrics->overlappingTiles;
+        spatialData["SeparateSingleEntry"]["AABB Utilization (%)"] = separateSingleEntryMetrics->aabbUtilization * 100;
+    }
 
     CsvReportGenerator::writeCrossGlbHLODComparison(
         outputDir / "spatial_analysis.csv", spatialData);
@@ -491,6 +499,13 @@ bool CrossGlbHLODExperiment::generateComparisonReport(
     perfData["Separate"]["First Tile Load (ms)"] = separateMetrics.firstTileLoadTime;
     perfData["Separate"]["Memory Peak (MB)"] = separateMetrics.memoryPeakMB;
     perfData["Separate"]["Draw Calls"] = separateMetrics.drawCalls;
+    if (separateSingleEntryMetrics != nullptr) {
+        perfData["SeparateSingleEntry"]["Tileset Size (KB)"] = separateSingleEntryMetrics->tilesetSizeKB;
+        perfData["SeparateSingleEntry"]["Initial Requests"] = separateSingleEntryMetrics->initialRequests;
+        perfData["SeparateSingleEntry"]["First Tile Load (ms)"] = separateSingleEntryMetrics->firstTileLoadTime;
+        perfData["SeparateSingleEntry"]["Memory Peak (MB)"] = separateSingleEntryMetrics->memoryPeakMB;
+        perfData["SeparateSingleEntry"]["Draw Calls"] = separateSingleEntryMetrics->drawCalls;
+    }
 
     CsvReportGenerator::writeCrossGlbHLODComparison(
         outputDir / "performance_metrics.csv", perfData);
@@ -506,23 +521,51 @@ bool CrossGlbHLODExperiment::generateComparisonReport(
     report << "【空间结构对比】\n";
     report << "Merged总瓦片数: " << mergedMetrics.totalTiles << "\n";
     report << "Separate总瓦片数: " << separateMetrics.totalTiles << "\n";
+    if (separateSingleEntryMetrics != nullptr) {
+        report << "SeparateSingleEntry总瓦片数: " << separateSingleEntryMetrics->totalTiles << "\n";
+    }
     report << "瓦片重叠: Merged=" << mergedMetrics.overlappingTiles
-           << ", Separate=" << separateMetrics.overlappingTiles << "\n\n";
+           << ", Separate=" << separateMetrics.overlappingTiles;
+    if (separateSingleEntryMetrics != nullptr) {
+        report << ", SeparateSingleEntry=" << separateSingleEntryMetrics->overlappingTiles;
+    }
+    report << "\n\n";
 
     report << "【加载性能对比】\n";
     report << "初始请求数: Merged=" << mergedMetrics.initialRequests
-           << ", Separate=" << separateMetrics.initialRequests << "\n";
+           << ", Separate=" << separateMetrics.initialRequests;
+    if (separateSingleEntryMetrics != nullptr) {
+        report << ", SeparateSingleEntry=" << separateSingleEntryMetrics->initialRequests;
+    }
+    report << "\n";
     report << "首瓦片加载: Merged=" << mergedMetrics.firstTileLoadTime << "ms"
-           << ", Separate=" << separateMetrics.firstTileLoadTime << "ms\n\n";
+           << ", Separate=" << separateMetrics.firstTileLoadTime << "ms";
+    if (separateSingleEntryMetrics != nullptr) {
+        report << ", SeparateSingleEntry=" << separateSingleEntryMetrics->firstTileLoadTime << "ms";
+    }
+    report << "\n\n";
 
     report << "【推荐策略】\n";
-    if (mergedMetrics.initialRequests < separateMetrics.initialRequests &&
-        mergedMetrics.overlappingTiles <= separateMetrics.overlappingTiles) {
+    bool mergedBeatsSeparate = mergedMetrics.initialRequests < separateMetrics.initialRequests &&
+        mergedMetrics.overlappingTiles <= separateMetrics.overlappingTiles;
+    bool mergedBeatsSingleEntry = true;
+    if (separateSingleEntryMetrics != nullptr) {
+        mergedBeatsSingleEntry = mergedMetrics.initialRequests < separateSingleEntryMetrics->initialRequests &&
+            mergedMetrics.overlappingTiles <= separateSingleEntryMetrics->overlappingTiles;
+    }
+
+    if (mergedBeatsSeparate && mergedBeatsSingleEntry) {
         report << "推荐使用: Merged HLOD\n";
         report << "原因: 更少的网络请求，更均衡的空间划分\n";
     } else {
-        report << "推荐使用: Separate HLOD\n";
-        report << "原因: 更好的分布式加载性能\n";
+        if (separateSingleEntryMetrics != nullptr &&
+            separateSingleEntryMetrics->initialRequests <= separateMetrics.initialRequests) {
+            report << "推荐使用: SeparateSingleEntry HLOD\n";
+            report << "原因: 保持独立构建优势，同时减少多tileset入口请求开销\n";
+        } else {
+            report << "推荐使用: Separate HLOD\n";
+            report << "原因: 更好的分布式加载性能\n";
+        }
     }
 
     report.close();
