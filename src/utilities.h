@@ -1,4 +1,4 @@
-﻿#ifndef UTILITIES_H
+#ifndef UTILITIES_H
 #define UTILITIES_H
 
 #include <string>
@@ -87,6 +87,7 @@ namespace GltfInstancing {
         int32_t originalNodeIndex;
         int32_t originalMeshIndex;
         TransformComponents transform;
+        int32_t sourceModelIndexInLoadedModels = -1;  // Index in loadedModels for per-GLB stats
     };
     
     struct BoundingBox {
@@ -122,6 +123,7 @@ namespace GltfInstancing {
         int32_t originalMeshIndexInModel;
         int32_t originalNodeIndexInModel;
         TransformComponents transform;
+        int32_t sourceModelIndexInLoadedModels = -1;  // Index in loadedModels for per-GLB stats
     };
 
     bool compareAccessorData(

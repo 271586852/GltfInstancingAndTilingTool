@@ -1,4 +1,4 @@
-﻿#include "instancing_detector.h"
+#include "instancing_detector.h"
 #include "utilities.h" // For logging, transform math, compare functions (though signature is preferred)
 
 #include <CesiumGltf/Accessor.h> // Ensure Accessor.h is included for its static methods
@@ -639,6 +639,7 @@ namespace GltfInstancing {
 
     void InstancingDetector::traverseNode(
         const LoadedGltfModel& loadedGltf,
+        int32_t modelIndexInLoadedModels,
         int32_t nodeIndex,
         const glm::dmat4& currentWorldTransform,
         std::map<size_t, InstancedMeshGroup>& potentialInstanceGroups,
@@ -717,6 +718,7 @@ namespace GltfInstancing {
                                 instanceInfo.originalGltfIndex = loadedGltf.uniqueId;
                                 instanceInfo.originalNodeIndex = nodeIndex;
                                 instanceInfo.originalMeshIndex = node.mesh;
+                                instanceInfo.sourceModelIndexInLoadedModels = modelIndexInLoadedModels;
                                 
                                     
                                     glm::dvec3 instTranslation(0.0);
@@ -787,6 +789,7 @@ namespace GltfInstancing {
                     instanceInfo.originalGltfIndex = loadedGltf.uniqueId;
                     instanceInfo.originalNodeIndex = nodeIndex;
                     instanceInfo.originalMeshIndex = node.mesh;
+                    instanceInfo.sourceModelIndexInLoadedModels = modelIndexInLoadedModels;
                     instanceInfo.transform = TransformComponents::fromMat4(worldTransform);
                     
                     if (GltfInstancing::TARGET_MESH_NAMES.count(mesh.name)) { 
@@ -910,6 +913,7 @@ namespace GltfInstancing {
                                 nonInstanced.originalGltfModelIndex = loadedGltf.uniqueId;
                                 nonInstanced.originalMeshIndexInModel = node.mesh;
                                 nonInstanced.originalNodeIndexInModel = nodeIndex;
+                                nonInstanced.sourceModelIndexInLoadedModels = modelIndexInLoadedModels;
                                 nonInstanced.transform = instanceInfo.transform;
                                 nonInstancedItems.push_back(nonInstanced);
                                 if (GltfInstancing::TARGET_MESH_NAMES.count(mesh.name)) {
@@ -931,7 +935,7 @@ namespace GltfInstancing {
 
         parentNodeIndicesChainForChildren.push_back(nodeIndex);
         for (int32_t childNodeIndex : node.children) {
-            traverseNode(loadedGltf, childNodeIndex, worldTransform, potentialInstanceGroups, nonInstancedItems, meshToSignatureCache, parentNodeIndicesChainForChildren);
+            traverseNode(loadedGltf, modelIndexInLoadedModels, childNodeIndex, worldTransform, potentialInstanceGroups, nonInstancedItems, meshToSignatureCache, parentNodeIndicesChainForChildren);
         }
         parentNodeIndicesChainForChildren.pop_back(); 
     }
@@ -960,7 +964,8 @@ namespace GltfInstancing {
             }
         }
 
-        for (const auto& loadedGltf : loadedModels) {
+        for (size_t modelIdx = 0; modelIdx < loadedModels.size(); ++modelIdx) {
+            const auto& loadedGltf = loadedModels[modelIdx];
             if (loadedGltf.model.scenes.empty()) {
                 logMessage("Model " + loadedGltf.originalPath.string() + " has no scenes. Skipping node traversal.");
                 continue;
@@ -975,7 +980,7 @@ namespace GltfInstancing {
 
             std::vector<int32_t> initialParentChain; 
             for (int32_t rootNodeIndex : scene.nodes) {
-                traverseNode(loadedGltf, rootNodeIndex, glm::dmat4(1.0), 
+                traverseNode(loadedGltf, static_cast<int32_t>(modelIdx), rootNodeIndex, glm::dmat4(1.0), 
                     potentialInstanceGroups, result.nonInstancedMeshes, meshToSignatureCache, initialParentChain);
             }
         }
@@ -1034,6 +1039,7 @@ namespace GltfInstancing {
                     // The representativeMeshIndexInModel from the group is the correct mesh index for these non-instanced items
                     niInfo.originalMeshIndexInModel = instanceData.originalMeshIndex; 
                     niInfo.originalNodeIndexInModel = instanceData.originalNodeIndex; 
+                    niInfo.sourceModelIndexInLoadedModels = instanceData.sourceModelIndexInLoadedModels;
                     niInfo.transform = instanceData.transform;
                     result.nonInstancedMeshes.push_back(niInfo);
                     if (isTargetGroup || GltfInstancing::TARGET_MESH_NAMES.count(group.representativeMeshName)) { 

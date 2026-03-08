@@ -1,4 +1,4 @@
-﻿#ifndef INSTANCING_DETECTOR_H
+#ifndef INSTANCING_DETECTOR_H
 #define INSTANCING_DETECTOR_H
 
 #include "utilities.h"     // For MeshInstanceInfo, InstancedMeshGroup, NonInstancedMeshInfo, etc.
@@ -77,6 +77,7 @@ namespace GltfInstancing {
         // Traverses the scene graph to collect mesh instances and their transforms
         void traverseNode(
             const LoadedGltfModel& loadedGltf,
+            int32_t modelIndexInLoadedModels,
             int32_t nodeIndex,
             const glm::dmat4& parentTransform,
             std::map<size_t, InstancedMeshGroup>& potentialInstanceGroups,

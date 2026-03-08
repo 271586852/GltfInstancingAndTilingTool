@@ -1,4 +1,4 @@
-﻿#include "glb_reader.h"
+#include "glb_reader.h"
 #include "instancing_detector.h"
 #include "glb_writer.h"
 #include "tileset_writer.h"
@@ -412,6 +412,79 @@ void writeInstancingAnalysisCsvEnhanced(
     const std::string& datasetName,
     const std::string& strategyId);
 
+// Per-GLB stats for optimization summary
+struct PerGlbStats {
+    size_t finalInstances = 0;
+    size_t nonInstancedCount = 0;
+    size_t finalMeshes = 0;  // instanced groups contributed to + non-instanced count
+};
+
+// Helper to write human-readable optimization summary (with optional per-GLB section)
+void writeInstancingOptimizationSummary(
+    const ToolConfiguration& config,
+    size_t initialNodes, size_t finalNodes,
+    size_t initialMeshes, size_t finalMeshes,
+    size_t initialInstances, size_t finalInstances,
+    size_t totalDisplayedMeshes,
+    double nodeReduction,
+    double finalInstancingRatio,
+    double instancingIncrease,
+    const std::vector<GltfInstancing::LoadedGltfModel>* loadedModels = nullptr,
+    const std::vector<PerGlbStats>* perGlbStats = nullptr) {
+
+    const long long savedNodes = static_cast<long long>(initialNodes) - static_cast<long long>(finalNodes);
+    const long long savedMeshes = static_cast<long long>(initialMeshes) - static_cast<long long>(finalMeshes);
+    const double meshReduction = (initialMeshes > 0)
+        ? (1.0 - static_cast<double>(finalMeshes) / static_cast<double>(initialMeshes)) * 100.0
+        : 0.0;
+    const double initialInstancingRatio = (totalDisplayedMeshes > 0)
+        ? (static_cast<double>(initialInstances) / static_cast<double>(totalDisplayedMeshes)) * 100.0
+        : 0.0;
+
+    std::filesystem::path summaryPath =
+        std::filesystem::path(config.outputDirectory) / "instancing_optimization_summary.txt";
+
+    std::ofstream summaryFile(summaryPath);
+    if (!summaryFile.is_open()) {
+        GltfInstancing::logError("Failed to write optimization summary to: " + summaryPath.string());
+        return;
+    }
+
+    summaryFile << "Instancing Optimization Summary\n";
+    summaryFile << "========================================\n\n";
+    summaryFile << std::fixed << std::setprecision(2);
+    summaryFile << "Initial Nodes: " << initialNodes << "\n";
+    summaryFile << "Final Nodes: " << finalNodes << "\n";
+    summaryFile << "Node Reduction Count: " << savedNodes << "\n";
+    summaryFile << "Node Reduction Rate (%): " << nodeReduction << "\n\n";
+
+    summaryFile << "Initial Meshes: " << initialMeshes << "\n";
+    summaryFile << "Final Meshes: " << finalMeshes << "\n";
+    summaryFile << "Mesh Reduction Count: " << savedMeshes << "\n";
+    summaryFile << "Mesh Reduction Rate (%): " << meshReduction << "\n\n";
+
+    summaryFile << "Initial Instancing Ratio (%): " << initialInstancingRatio << "\n";
+    summaryFile << "Final Instancing Ratio (%): " << finalInstancingRatio << "\n";
+    summaryFile << "Instancing Ratio Increase (%): " << instancingIncrease << "\n";
+    summaryFile << "Final Instanced Mesh Count: " << finalInstances << "\n";
+    summaryFile << "Total Displayed Mesh Count: " << totalDisplayedMeshes << "\n";
+
+    if (loadedModels && perGlbStats && perGlbStats->size() == loadedModels->size()) {
+        summaryFile << "\n\n--- Per-GLB Statistics ---\n\n";
+        for (size_t i = 0; i < loadedModels->size(); ++i) {
+            const auto& lm = (*loadedModels)[i];
+            const auto& stats = (*perGlbStats)[i];
+            summaryFile << "GLB " << (i + 1) << ": " << lm.originalPath.filename().string() << "\n";
+            summaryFile << "  Final Instances: " << stats.finalInstances << "\n";
+            summaryFile << "  Non-instanced Count: " << stats.nonInstancedCount << "\n";
+            summaryFile << "  Final Meshes (groups+nonInst): " << stats.finalMeshes << "\n\n";
+        }
+    }
+
+    summaryFile.close();
+    GltfInstancing::logInfo("Instancing optimization summary written to: " + summaryPath.string());
+}
+
 // Helper to write CSV analysis report
 void writeAnalysisCsv(const ToolConfiguration& config, 
                      const std::vector<GltfInstancing::LoadedGltfModel>& loadedModels,
@@ -481,6 +554,28 @@ void writeAnalysisCsv(const ToolConfiguration& config,
     // Total Displayed Meshes: All instances + All non-instanced items
     size_t totalDisplayedMeshes = finalInstances + nonInstancedMeshes;
 
+    // 2b. Per-GLB stats
+    std::vector<PerGlbStats> perGlbStats(loadedModels.size());
+    std::vector<std::set<size_t>> perGlbGroupIndices(loadedModels.size());  // groups this GLB contributed to
+    for (size_t gIdx = 0; gIdx < result.instancedGroups.size(); ++gIdx) {
+        for (const auto& inst : result.instancedGroups[gIdx].instances) {
+            int32_t src = inst.sourceModelIndexInLoadedModels;
+            if (src >= 0 && static_cast<size_t>(src) < loadedModels.size()) {
+                perGlbStats[src].finalInstances++;
+                perGlbGroupIndices[src].insert(gIdx);
+            }
+        }
+    }
+    for (const auto& ni : result.nonInstancedMeshes) {
+        int32_t src = ni.sourceModelIndexInLoadedModels;
+        if (src >= 0 && static_cast<size_t>(src) < loadedModels.size()) {
+            perGlbStats[src].nonInstancedCount++;
+        }
+    }
+    for (size_t i = 0; i < perGlbStats.size(); ++i) {
+        perGlbStats[i].finalMeshes = perGlbGroupIndices[i].size() + perGlbStats[i].nonInstancedCount;
+    }
+
     // 3. Ratios
     double nodeReduction = (initialNodes > 0) ? (1.0 - (double)finalNodes / (double)initialNodes) * 100.0 : 0.0;
     double initialInstancingRatio = (totalDisplayedMeshes > 0) ? ((double)initialInstances / (double)totalDisplayedMeshes) * 100.0 : 0.0;
@@ -512,7 +607,36 @@ void writeAnalysisCsv(const ToolConfiguration& config,
         GltfInstancing::logError("Failed to write instancing analysis CSV to: " + csvPath.string());
     }
 
-    // 5. Write enhanced experiment framework output (if enabled)
+    // 5. Write human-readable optimization summary (with per-GLB section)
+    writeInstancingOptimizationSummary(
+        config,
+        initialNodes, finalNodes,
+        initialMeshes, finalMeshes,
+        initialInstances, finalInstances,
+        totalDisplayedMeshes,
+        nodeReduction,
+        finalInstancingRatio,
+        instancingIncrease,
+        &loadedModels,
+        &perGlbStats
+    );
+
+    // 5b. Write per-GLB CSV
+    std::filesystem::path perGlbCsvPath = std::filesystem::path(config.outputDirectory) / "instancing_per_glb.csv";
+    std::ofstream perGlbCsv(perGlbCsvPath);
+    if (perGlbCsv.is_open()) {
+        perGlbCsv << "GLB File,Final Instances,Non-instanced Count,Final Meshes\n";
+        for (size_t i = 0; i < loadedModels.size(); ++i) {
+            perGlbCsv << loadedModels[i].originalPath.filename().string() << ","
+                      << perGlbStats[i].finalInstances << ","
+                      << perGlbStats[i].nonInstancedCount << ","
+                      << perGlbStats[i].finalMeshes << "\n";
+        }
+        perGlbCsv.close();
+        GltfInstancing::logInfo("Per-GLB instancing stats written to: " + perGlbCsvPath.string());
+    }
+
+    // 6. Write enhanced experiment framework output (if enabled)
     if (config.enableExperimentMode) {
         std::string datasetName = config.experimentDatasetName.empty() ? "default_dataset" : config.experimentDatasetName;
         std::string strategyId = config.experimentStrategyId.empty() ? "default" : config.experimentStrategyId;
@@ -573,7 +697,7 @@ void writeInstancingAnalysisCsvEnhanced(
 
     // 如果使用实验模式，同时生成到实验目录
     if (config.enableExperimentMode && !datasetName.empty()) {
-        std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / ".." / "experiments";
+        std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / "experiments";
         GltfInstancing::logInfo("Creating experiment directory structure at: " + experimentsBaseDir.string());
 
         ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
@@ -733,7 +857,7 @@ void writeLodAnalysisCsv(const ToolConfiguration& config,
         std::string datasetName = config.experimentDatasetName.empty() ? "default_dataset" : config.experimentDatasetName;
         std::string strategyId = config.experimentStrategyId.empty() ? "InstancingLOD" : config.experimentStrategyId;
 
-        std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / ".." / "experiments";
+        std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / "experiments";
         ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
 
         ExperimentFramework::StrategyInfo strategy;
@@ -1290,7 +1414,7 @@ int main(int argc, char* argv[]) {
                 std::string strategyId = config.experimentStrategyId.empty() ?
                     "Depth" + std::to_string(config.quadtreeMaxDepth) + "_Obj" + std::to_string(config.quadtreeMaxObjectsPerTile) : config.experimentStrategyId;
 
-                std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / ".." / "experiments";
+                std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / "experiments";
                 ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
 
                 ExperimentFramework::StrategyInfo strategy;
@@ -1380,6 +1504,7 @@ int main(int argc, char* argv[]) {
     // Stage 1 uses Stage 1 parameters (config.geometryTolerance, etc.)
     GltfInstancing::InstancingDetector detector(config.geometryTolerance, config.attributesToSkipDataHash, config.normalTolerance, config.instanceLimit, config.allowNonUniformScaleInstancing);
     GltfInstancing::InstancingDetectionResult detectionResult = detector.detect(loadedModels);
+    GltfInstancing::logInfo("Stage 1: Instancing detection finished. Generating optimization analysis outputs...");
 
     GltfInstancing::GlbWriter glbWriter;
     GltfInstancing::TilesetWriter tilesetWriter;
@@ -1406,7 +1531,7 @@ int main(int argc, char* argv[]) {
         std::string datasetName = config.experimentDatasetName.empty() ? "default_dataset" : config.experimentDatasetName;
         std::string strategyId = config.experimentStrategyId.empty() ? "NonUniform_Allowed" : config.experimentStrategyId;
 
-        std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / ".." / "experiments";
+        std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / "experiments";
         ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
 
         ExperimentFramework::StrategyInfo strategy;
@@ -1881,7 +2006,7 @@ int main(int argc, char* argv[]) {
                 std::string datasetName = config.experimentDatasetName.empty() ?
                     "multi_glb_dataset" : config.experimentDatasetName;
 
-                std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / ".." / "experiments";
+                std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / "experiments";
                 ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
 
                 Experiment6::runExperiment6(config, loadedModels, inputGlbs, datasetName, expManager);
@@ -1895,7 +2020,7 @@ int main(int argc, char* argv[]) {
             std::string datasetName = config.experimentDatasetName.empty() ? "default_dataset" : config.experimentDatasetName;
             std::string strategyId = config.experimentStrategyId.empty() ? "FullPipeline" : config.experimentStrategyId;
 
-            std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / ".." / "experiments";
+            std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / "experiments";
             ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
 
             ExperimentFramework::StrategyInfo strategy;
