@@ -57,8 +57,8 @@ output_directory/                      # 例如：processed_output/
 ├── tileset_instanced.json             # 实例化tileset
 ├── tileset_non_instanced.json         # 非实例化tileset
 │
-├── instancing_lod_output/             # LOD输出（如启用）
-│   ├── lod_analysis.csv               # LOD分析指标
+├── instance_lod_output/               # Instance LOD 输出（如启用 enable_instance_lod_generation）
+│   ├── instance_lod_analysis.csv      # Instance LOD 分析指标
 │   ├── LOD5_Original.glb
 │   ├── LOD4_Variant.glb
 │   ├── LOD3_Class.glb
@@ -66,9 +66,9 @@ output_directory/                      # 例如：processed_output/
 │   ├── LOD1_Proxy.glb
 │   └── tileset_lod.json
 │
-├── non_instancing_lod_output/         # 非实例化LOD（如启用）
-│   ├── non_instanced_lod_report.csv
-│   └── LOD*.glb
+├── non_instance_lod_output/           # Non-Instance LOD 输出（如启用 enable_non_instanced_lod_generation）
+│   ├── non_instance_lod_analysis.csv  # Non-Instance LOD 分析指标
+│   └── non_instanced_LOD*.glb
 │
 ├── quadtree_output/                   # HLOD输出（如启用）
 │   ├── hlod_analysis.csv              # HLOD分析指标
@@ -88,7 +88,7 @@ output_directory/                      # 例如：processed_output/
 当 `enable_experiment_mode = true` 时，**保留原有输出**，同时额外生成：
 
 ```
-output_directory/../experiments/       # 与output_directory同级
+output_directory/experiments/         # 实验输出在 output_directory 内
 │
 ├── README.md                          # 所有实验总览
 │
@@ -201,8 +201,8 @@ output_directory/../experiments/       # 与output_directory同级
 | `instancing_analysis.csv` | 实例化分析指标 | 所有实验 |
 | `instancing_analysis.txt` | 详细文字报告 | 调试分析 |
 | `*_results.csv` | 详细分组信息 | 深入研究 |
-| `lod_analysis.csv` | 5级LOD指标 | 实验2,4 |
-| `non_instanced_lod_report.csv` | 非实例化LOD指标 | 实验2 |
+| `instance_lod_analysis.csv` | Instance LOD 5级指标 | 实验2,4 |
+| `non_instance_lod_analysis.csv` | Non-Instance LOD 指标 | 实验2 |
 | `hlod_analysis.csv` | HLOD指标 | 实验3,6 |
 
 ### 4.2 实验模式新增文件
@@ -228,9 +228,9 @@ output_directory/../experiments/       # 与output_directory同级
     │                              │           ├── config.json
     │                              │           └── README.md
     │                              │
-    ├── instancing_lod_output/ ────┼──► experiments/02_LODStrategy/
-    │       lod_analysis.csv       │       dataset_xxx/A_InstancingLOD/
-    │                              │           ├── lod_analysis.csv
+    ├── instance_lod_output/ ──────┼──► experiments/02_LODStrategy/
+    │   instance_lod_analysis.csv  │       dataset_xxx/A_InstancingLOD/
+    │                              │           ├── instance_lod_analysis.csv
     │                              │           └── ...
     │                              │
     └── quadtree_output/ ──────────┼──► experiments/06_CrossGLBHLOD/

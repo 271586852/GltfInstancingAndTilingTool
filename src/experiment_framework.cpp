@@ -115,6 +115,9 @@ bool CsvReportGenerator::writeInstancingAnalysis(
 
     // 按预定顺序写入关键指标
     std::vector<std::string> keyOrder = {
+        "SO", "SC", "CR",
+        "Eo", "Ec", "ECR",
+        "EIc", "IR", "Ic", "PIC",
         "Input Models", "Initial Nodes", "Initial Meshes", "Initial Instances",
         "Instanced Groups", "Final Instances", "Non-instanced Meshes",
         "Final Nodes", "Final Meshes", "Total Displayed Meshes",

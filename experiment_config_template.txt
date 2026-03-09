@@ -56,7 +56,7 @@ experiment_dataset_name = 多楼层建筑
 # -----------------------------------------------------------------------------
 # LOD配置
 # -----------------------------------------------------------------------------
-enable_lod_generation = true
+enable_instance_lod_generation = true
 lod_level_count = 5
 enable_semantic_check = true
 lod4_size_tolerance = 0.05

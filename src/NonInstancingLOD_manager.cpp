@@ -157,10 +157,11 @@ namespace NonInstancingLOD {
             currentRatio *= ratio; 
         }
 
-        // Write CSV Report
-        std::filesystem::path reportPath = outputDir / "non_instanced_lod_report.csv";
+        // Write CSV Report (Non-Instance LOD)
+        std::filesystem::path reportPath = outputDir / "non_instance_lod_analysis.csv";
         std::ofstream reportFile(reportPath);
         if (reportFile.is_open()) {
+            reportFile << "# Non-Instance LOD Analysis\n";
             reportFile << "Level,Filename,File Size (MB),Triangle Count,Original Triangles,Reduction Ratio (Triangles),Reduction Ratio (File Size)\n";
             for (const auto& s : allStats) {
                 double triRatio = (s.originalTriangleCount > 0) ? (1.0 - (double)s.triangleCount / s.originalTriangleCount) * 100.0 : 0.0;
@@ -175,9 +176,9 @@ namespace NonInstancingLOD {
                            << sizeRatio << "%\n";
             }
             reportFile.close();
-            GltfInstancing::logInfo("Non-Instanced LOD report written to: " + reportPath.string());
+            GltfInstancing::logInfo("Non-Instance LOD analysis written to: " + reportPath.string());
         } else {
-             GltfInstancing::logError("Failed to write non-instanced LOD report to: " + reportPath.string());
+             GltfInstancing::logError("Failed to write Non-Instance LOD analysis to: " + reportPath.string());
         }
         
         return generatedLevels;

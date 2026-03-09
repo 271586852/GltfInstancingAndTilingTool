@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net">
+  <diagram id="完整流程与参数配置" name="完整流程与参数配置">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- 标题 -->
+        <mxCell id="title" value="GltfInstancingAndTilingTool 完整流程与参数配置" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="500" y="20" width="400" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== 输入区 ========== -->
+        <mxCell id="inputBox" value="输入" style="swimlane;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="70" width="220" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="in1" value="input_directory&#xa;GLB 文件目录" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="inputBox">
+          <mxGeometry x="20" y="40" width="180" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="in2" value="output_directory&#xa;输出目录" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="inputBox">
+          <mxGeometry x="20" y="85" width="180" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="in3" value="semantic_data_path&#xa;语义 XML (LOD 用)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="inputBox">
+          <mxGeometry x="20" y="130" width="180" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="in4" value="csv_directory&#xa;CSV 目录 (Stage 3 用)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="inputBox">
+          <mxGeometry x="20" y="175" width="180" height="35" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== Stage 1 参数区 ========== -->
+        <mxCell id="stage1Params" value="Stage 1 实例化参数&#xa;(主流程)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="300" y="70" width="200" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="p1a" value="geometryTolerance (--tolerance)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
+          <mxGeometry x="10" y="35" width="180" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="p1b" value="normalTolerance (--normal-tolerance)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
+          <mxGeometry x="10" y="60" width="180" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="p1c" value="instanceLimit (--instance-limit)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
+          <mxGeometry x="10" y="85" width="180" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="p1d" value="attributesToSkipDataHash" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
+          <mxGeometry x="10" y="110" width="180" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="p1e" value="allowNonUniformScaleInstancing" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
+          <mxGeometry x="10" y="135" width="180" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="p1f" value="mergeAllGlb" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
+          <mxGeometry x="10" y="160" width="180" height="22" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== HLOD 参数区 ========== -->
+        <mxCell id="hlodParams" value="HLOD 实例化参数&#xa;(未设置则用 Stage 1)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="540" y="70" width="220" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="hp1" value="hlodGeometryTolerance (--hlod-tolerance)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
+          <mxGeometry x="10" y="35" width="200" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="hp2" value="hlodNormalTolerance (--hlod-normal-tolerance)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
+          <mxGeometry x="10" y="60" width="200" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="hp3" value="hlodInstanceLimit (--hlod-instance-limit)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
+          <mxGeometry x="10" y="85" width="200" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="hp4" value="hlodAttributesToSkipDataHash" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
+          <mxGeometry x="10" y="110" width="200" height="22" as="geometry"/>
+        </mxCell>
+        <mxCell id="hp5" value="hlodAllowNonUniformScaleInstancing" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
+          <mxGeometry x="10" y="135" width="200" height="22" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== Stage 1 流程 ========== -->
+        <mxCell id="stage1" value="Stage 1: 实例化检测" style="swimlane;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="280" width="320" height="165" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1a" value="GlbReader 发现与加载" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="stage1">
+          <mxGeometry x="20" y="40" width="130" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1b" value="InstancingDetector&#xa;Stage 1 参数" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="stage1">
+          <mxGeometry x="170" y="40" width="130" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1c" value="GlbWriter 输出" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="stage1">
+          <mxGeometry x="20" y="90" width="130" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1d" value="TilesetWriter" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="stage1">
+          <mxGeometry x="170" y="90" width="130" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1out" value="输出: instanced_meshes.glb&#xa;non_instanced_meshes.glb&#xa;tileset_instanced.json, tileset_non_instanced.json&#xa;instancing_analysis.csv (SO,SC,CR,Eo,Ec,ECR,EIc,IR,Ic,PIC)&#xa;instancing_per_glb.csv, instancing_optimization_summary.txt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacingLeft=5;fontSize=9;" vertex="1" parent="stage1">
+          <mxGeometry x="20" y="135" width="280" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_s1a" style="endArrow=classic;html=1;" edge="1" parent="stage1" source="s1a" target="s1b">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_s1b" style="endArrow=classic;html=1;" edge="1" parent="stage1" source="s1b" target="s1c">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_s1c" style="endArrow=classic;html=1;" edge="1" parent="stage1" source="s1c" target="s1d">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_s1d" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="stage1" source="s1d" target="s1out">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== Stage 2 流程 ========== -->
+        <mxCell id="stage2" value="Stage 2: Mesh 分割 (可选)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="280" width="280" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2a" value="参数: meshSegmentation&#xa;(--mesh-segmentation)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;" vertex="1" parent="stage2">
+          <mxGeometry x="20" y="35" width="240" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2b" value="输入: stage1_outputGlbs&#xa;(instanced + non_instanced)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;" vertex="1" parent="stage2">
+          <mxGeometry x="20" y="80" width="240" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="s2c" value="输出: segmented_glb_output/&#xa;每个 mesh 单独 GLB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;" vertex="1" parent="stage2">
+          <mxGeometry x="20" y="120" width="240" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_s2a" style="endArrow=classic;html=1;" edge="1" parent="stage2" source="s2a" target="s2b">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_s2b" style="endArrow=classic;html=1;" edge="1" parent="stage2" source="s2b" target="s2c">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== Stage 3 流程 ========== -->
+        <mxCell id="stage3" value="Stage 3: CSV 处理 (可选)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="720" y="280" width="280" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3a" value="参数: csv_directory (--csv-dir)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;" vertex="1" parent="stage3">
+          <mxGeometry x="20" y="35" width="240" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3b" value="输入: non_instanced_meshes.glb&#xa;+ CSV 目录" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;" vertex="1" parent="stage3">
+          <mxGeometry x="20" y="75" width="240" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3c" value="输出: CSV 对比报告" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;" vertex="1" parent="stage3">
+          <mxGeometry x="20" y="115" width="240" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_s3a" style="endArrow=classic;html=1;" edge="1" parent="stage3" source="s3a" target="s3b">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_s3b" style="endArrow=classic;html=1;" edge="1" parent="stage3" source="s3b" target="s3c">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== LOD 生成流程 ========== -->
+        <mxCell id="lodGen" value="Instance LOD (Instancing LOD) 生成 (可选)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="460" width="320" height="160" as="geometry"/>
+        </mxCell>
+        <mxCell id="lodP" value="参数: enable_instance_lod_generation (Instance LOD), lod_level_count,&#xa;target_screen_sse, enable_semantic_check,&#xa;enable_geometric_check, lod4_size_tolerance,&#xa;lod3_aspect_ratio_tolerance, semantic_data_path" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;align=left;spacingLeft=5;" vertex="1" parent="lodGen">
+          <mxGeometry x="20" y="35" width="280" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="lodIn" value="输入: instanced_meshes (detectionResult + loadedModels)&#xa;+ 语义 XML" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;" vertex="1" parent="lodGen">
+          <mxGeometry x="20" y="100" width="280" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="lodOut" value="输出: instance_lod_output/&#xa;LOD1~5.glb, tileset.json, instance_lod_analysis.csv" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;" vertex="1" parent="lodGen">
+          <mxGeometry x="20" y="140" width="280" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_lod1" style="endArrow=classic;html=1;" edge="1" parent="lodGen" source="lodP" target="lodIn">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_lod2" style="endArrow=classic;html=1;" edge="1" parent="lodGen" source="lodIn" target="lodOut">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== Non-Instanced LOD 流程 ========== -->
+        <mxCell id="nonInstLod" value="Non-Instance LOD + 后处理实例化 (可选)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="460" width="320" height="160" as="geometry"/>
+        </mxCell>
+        <mxCell id="nilP" value="参数: enable_non_instanced_lod_generation (Non-Instance LOD),&#xa;non_instanced_lod_level_count, non_instanced_lod_ratio,&#xa;non_instanced_min_simplify_index_count,&#xa;enable_non_instanced_lod_instancing" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;align=left;spacingLeft=5;" vertex="1" parent="nonInstLod">
+          <mxGeometry x="20" y="30" width="280" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="nilP2" value="实例化用: HLOD 参数&#xa;(getHlodInstancingParams)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;" vertex="1" parent="nonInstLod">
+          <mxGeometry x="20" y="95" width="280" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="nilIn" value="输入: non_instanced_meshes.glb" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;" vertex="1" parent="nonInstLod">
+          <mxGeometry x="20" y="130" width="280" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="nilOut" value="输出: non_instance_lod_output/&#xa;non_instanced_LOD*.glb, non_instance_lod_analysis.csv (若启用)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;" vertex="1" parent="nonInstLod">
+          <mxGeometry x="20" y="160" width="280" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_nil1" style="endArrow=classic;html=1;" edge="1" parent="nonInstLod" source="nilP" target="nilP2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_nil2" style="endArrow=classic;html=1;" edge="1" parent="nonInstLod" source="nilP2" target="nilIn">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_nil3" style="endArrow=classic;html=1;" edge="1" parent="nonInstLod" source="nilIn" target="nilOut">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== Quadtree HLOD 流程 ========== -->
+        <mxCell id="quadtree" value="Quadtree HLOD (可选)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="760" y="460" width="340" height="160" as="geometry"/>
+        </mxCell>
+        <mxCell id="qtP" value="参数: enableQuadtree, quadtreeMaxDepth,&#xa;quadtreeMaxObjectsPerTile" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;align=left;spacingLeft=5;" vertex="1" parent="quadtree">
+          <mxGeometry x="20" y="30" width="300" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="qtP2" value="瓦片内实例化: HLOD 参数" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;" vertex="1" parent="quadtree">
+          <mxGeometry x="20" y="80" width="300" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="qtIn" value="输入: non_instanced_meshes.glb&#xa;(或 segmented_glb_output 若 meshSegmentation)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;" vertex="1" parent="quadtree">
+          <mxGeometry x="20" y="115" width="300" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="qtOut" value="输出: quadtree_output/&#xa;tileset.json, 瓦片 GLB, hlod_analysis.csv" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;" vertex="1" parent="quadtree">
+          <mxGeometry x="20" y="160" width="300" height="35" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_qt1" style="endArrow=classic;html=1;" edge="1" parent="quadtree" source="qtP" target="qtP2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_qt2" style="endArrow=classic;html=1;" edge="1" parent="quadtree" source="qtP2" target="qtIn">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_qt3" style="endArrow=classic;html=1;" edge="1" parent="quadtree" source="qtIn" target="qtOut">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== 实验模式 ========== -->
+        <mxCell id="expBox" value="实验模式 (可选)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="660" width="340" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="expP" value="参数: enableExperimentMode, experimentDatasetName,&#xa;experimentStrategyId, runCrossGlbHLODExperiment" style="rounded=0;whiteSpace=wrap;html=1;fontSize=9;align=left;spacingLeft=5;" vertex="1" parent="expBox">
+          <mxGeometry x="20" y="35" width="300" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="expOut" value="输出: output_directory/experiments/&#xa;01_InstancingStrategy, 02_LODStrategy, ..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;" vertex="1" parent="expBox">
+          <mxGeometry x="20" y="85" width="300" height="35" as="geometry"/>
+        </mxCell>
+
+        <!-- ========== 主流程连接 ========== -->
+        <mxCell id="conn1" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="inputBox" target="stage1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn2" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.25;entryY=0;dashed=1;" edge="1" parent="1" source="stage1Params" target="stage1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- stage1→stage2: 从右侧偏上发出，避免与 conn4 重叠 -->
+        <mxCell id="conn3" style="endArrow=classic;html=1;exitX=1;exitY=0.35;entryX=0;entryY=0.5;" edge="1" parent="1" source="stage1" target="stage2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- stage1→stage3: 从右侧偏下发出，经 waypoint 从 stage2 下方绕过避免交叉 -->
+        <mxCell id="conn4" style="endArrow=classic;html=1;exitX=1;exitY=0.65;entryX=0;entryY=0.5;" edge="1" parent="1" source="stage1" target="stage3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="540" y="435"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <!-- stage1→lodGen/nonInstLod/quadtree: 分散出口点避免三线重叠 -->
+        <mxCell id="conn5" style="endArrow=classic;html=1;exitX=0.25;exitY=1;entryX=0.5;entryY=0;dashed=1;" edge="1" parent="1" source="stage1" target="lodGen">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn6" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;dashed=1;" edge="1" parent="1" source="stage1" target="nonInstLod">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn7" style="endArrow=classic;html=1;exitX=0.75;exitY=1;entryX=0.5;entryY=0;dashed=1;" edge="1" parent="1" source="stage1" target="quadtree">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- hlodParams→nonInstLod/quadtree: 分散出口点避免交叉 -->
+        <mxCell id="conn8" style="endArrow=classic;html=1;exitX=0.25;exitY=1;entryX=0.5;entryY=0;dashed=1;" edge="1" parent="1" source="hlodParams" target="nonInstLod">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="conn9" style="endArrow=classic;html=1;exitX=0.75;exitY=1;entryX=0.5;entryY=0;dashed=1;" edge="1" parent="1" source="hlodParams" target="quadtree">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- 图例 -->
+        <mxCell id="legend" value="图例" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1140" y="70" width="200" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg1" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="35" width="20" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg1t" value="输入" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="50" y="32" width="120" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg2" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="60" width="20" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg2t" value="Stage 1 主流程" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="50" y="57" width="120" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg3" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="85" width="20" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg3t" value="LOD/HLOD 参数" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="50" y="82" width="120" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg4" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="110" width="20" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg4t" value="输出" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="50" y="107" width="120" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg5" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="135" width="20" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg5t" value="Quadtree HLOD" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="50" y="132" width="120" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg6" value="---" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="20" y="160" width="80" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg6t" value="参数传递" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=10;" vertex="1" parent="legend">
+          <mxGeometry x="50" y="157" width="120" height="20" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

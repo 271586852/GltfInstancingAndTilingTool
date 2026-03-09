@@ -19,8 +19,8 @@ struct ToolConfiguration {
     bool csvDirectorySet = false;
     bool allowNonUniformScaleInstancing = false;
 
-    // --- LOD Configuration ---
-    bool enableLodGeneration = false;
+    // --- Instance LOD (Instancing LOD) Configuration ---
+    bool enableInstanceLodGeneration = false;
     int lodLevelCount = 5;
     double targetScreenSSE = 16.0;
     bool enableSemanticCheck = true;
@@ -42,7 +42,7 @@ struct ToolConfiguration {
     bool hlodAttributesToSkipDataHashSet = false;
     bool hlodInstanceLimitSet = false;
 
-    // --- Non-Instanced LOD Configuration ---
+    // --- Non-Instance LOD Configuration ---
     bool enableNonInstancedLodGeneration = false;
     int nonInstancedLodLevelCount = 3;
     double nonInstancedLodRatio = 0.5;

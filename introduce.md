@@ -52,5 +52,5 @@
 - **输出**：
   - `instanced_meshes.glb` / `non_instanced_meshes.glb`
   - `tileset_instanced.json` / `tileset_non_instanced.json`
-  - 可选 `instancing_lod_output/LOD*.glb` 与层级 `tileset.json`
+  - 可选 `instance_lod_output/LOD*.glb` 与层级 `tileset.json`
   - 分析报告与 CSV 统计结果

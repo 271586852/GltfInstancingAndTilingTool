@@ -338,9 +338,9 @@ bool writeInlineAggregatedTileset(
 
 } // namespace
 
-// Write unified tileset for a directory containing instancing_lod_output and quadtree_output
+// Write unified tileset for a directory containing instance_lod_output and quadtree_output
 void writeUnifiedTileset(const std::filesystem::path& outputDir, const std::string& strategyName) {
-    std::filesystem::path lodTilesetPath = outputDir / "instancing_lod_output" / "tileset.json";
+    std::filesystem::path lodTilesetPath = outputDir / "instance_lod_output" / "tileset.json";
     std::filesystem::path quadtreeTilesetPath = outputDir / "quadtree_output" / "tileset.json";
     std::filesystem::path unifiedTilesetPath = outputDir / "tileset.json";
 
@@ -351,7 +351,7 @@ void writeUnifiedTileset(const std::filesystem::path& outputDir, const std::stri
     nlohmann::json rootJson;
     rootJson["refine"] = "ADD";
 
-    // NOTE: Do NOT set transform here. Child tilesets (instancing_lod_output/tileset.json
+    // NOTE: Do NOT set transform here. Child tilesets (instance_lod_output/tileset.json
     // and quadtree_output/tileset.json) already have their own transform matrices.
     // Setting transform here would cause double transformation.
 
@@ -364,7 +364,7 @@ void writeUnifiedTileset(const std::filesystem::path& outputDir, const std::stri
         nlohmann::json lodChild;
         lodChild["refine"] = "ADD";
         lodChild["geometricError"] = std::max(1.0, lodInfo.geometricError);
-        lodChild["content"]["uri"] = "instancing_lod_output/tileset.json";
+        lodChild["content"]["uri"] = "instance_lod_output/tileset.json";
         if (lodInfo.hasValidBox) {
             lodChild["boundingVolume"]["box"] = boxToJson(lodInfo.worldBox);
             childBoxes.push_back(lodInfo.worldBox);
@@ -444,7 +444,7 @@ void processSingleGlbFullPipeline(
     GltfInstancing::logInfo("[Full Pipeline] Processing: " + glbName);
 
     // Create subdirectories for outputs
-    std::filesystem::path lodOutputDir = outputDir / "instancing_lod_output";
+    std::filesystem::path lodOutputDir = outputDir / "instance_lod_output";
     std::filesystem::path quadtreeOutputDir = outputDir / "quadtree_output";
     std::filesystem::create_directories(lodOutputDir);
     std::filesystem::create_directories(quadtreeOutputDir);
@@ -480,7 +480,7 @@ void processSingleGlbFullPipeline(
         loadedModels, detectionResult, nonInstancedGlbPath);
 
     // ===== Stage 2: Generate Instancing LOD =====
-    if (baseConfig.enableLodGeneration && std::filesystem::exists(instancedGlbPath) && instancedResult) {
+    if (baseConfig.enableInstanceLodGeneration && std::filesystem::exists(instancedGlbPath) && instancedResult) {
         GltfInstancing::logInfo("[Full Pipeline] Generating Instancing LOD for: " + glbName);
 
         // Parse semantic data if available
@@ -614,7 +614,7 @@ void runExperiment6(
         mergedDir.parent_path(), datasetName, inputGlbs);
 
     // Create subdirectories
-    std::filesystem::path mergedLodDir = mergedOutputDir / "instancing_lod_output";
+    std::filesystem::path mergedLodDir = mergedOutputDir / "instance_lod_output";
     std::filesystem::path mergedQuadtreeDir = mergedOutputDir / "quadtree_output";
     std::filesystem::create_directories(mergedLodDir);
     std::filesystem::create_directories(mergedQuadtreeDir);
@@ -648,7 +648,7 @@ void runExperiment6(
             glbWriter.writeNonInstancedMeshesOnly(allLoadedModels, detectionResult, mergedNonInstancedGlb);
 
             // Generate Instancing LOD for merged strategy
-            if (config.enableLodGeneration && std::filesystem::exists(mergedInstancedGlb)) {
+            if (config.enableInstanceLodGeneration && std::filesystem::exists(mergedInstancedGlb)) {
                 GltfInstancing::logInfo("[Merged Strategy] Generating Instancing LOD...");
 
                 // Parse semantic data if available
