@@ -75,9 +75,12 @@ hlod_instance_limit = 3
 hlod_allow_non_uniform_scale_instancing = true
 
 # -----------------------------------------------------------------------------
-# 输出目录
+# 输出目录与结构
 # -----------------------------------------------------------------------------
 output_directory = D:/Experiments/01_InstancingStrategy/dataset_住宅标准层/02_Moderate_0.05m
+
+# 输出结构：staged（按流水线阶段分层，默认）| legacy（原有扁平结构）
+output_structure_mode = staged
 
 # =============================================================================
 # 使用说明

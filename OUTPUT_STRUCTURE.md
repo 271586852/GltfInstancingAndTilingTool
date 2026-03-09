@@ -6,6 +6,10 @@
 1. **普通模式**（向后兼容）：输出到指定目录，保持原有结构
 2. **实验模式**（新增）：额外生成标准化的实验目录结构，便于对比分析
 
+工具支持**两种输出结构**（`output_structure_mode`）：
+- **staged**（默认）：按流水线阶段分层，结构清晰
+- **legacy**：原有扁平结构，向后兼容
+
 ---
 
 ## 一、输出目录配置
@@ -27,7 +31,19 @@ output_directory = D:/Experiments/Results
 默认输出目录 = <input_directory>/processed_output
 ```
 
-### 1.2 实验模式开关
+### 1.2 输出结构模式
+
+```ini
+# staged（默认）：按流水线阶段分层
+output_structure_mode = staged
+
+# legacy：原有扁平结构，向后兼容
+output_structure_mode = legacy
+```
+
+命令行：`--output-structure-mode staged` 或 `--output-structure-mode legacy`
+
+### 1.3 实验模式开关
 
 ```ini
 # 启用实验模式（生成额外的标准化实验目录）
@@ -42,48 +58,92 @@ experiment_strategy_id = 02_Moderate_0.05m
 
 ---
 
-## 二、普通模式输出结构（原有功能）
+## 二、Staged 模式输出结构（默认，推荐）
 
-当 `enable_experiment_mode = false` 时，仅输出到 `output_directory`：
+当 `output_structure_mode = staged` 时，按流水线阶段分层：
 
 ```
-output_directory/                      # 例如：processed_output/
-├── instancing_analysis.csv            # 实例化分析指标
-├── instancing_analysis.txt            # 详细文字报告
-├── ZSJQHHMZX_CD_T1_results.csv       # 详细分组结果（按输入文件）
+output_directory/
+├── run_manifest.json                  # 运行元数据（时间、配置、启用阶段）
 │
-├── instanced_meshes.glb               # 实例化网格输出
-├── non_instanced_meshes.glb           # 非实例化网格输出
-├── tileset_instanced.json             # 实例化tileset
-├── tileset_non_instanced.json         # 非实例化tileset
+├── 01_instancing/                      # Stage 1：实例化检测
+│   ├── instanced.glb                  # 实例化网格
+│   ├── non_instanced.glb              # 非实例化网格
+│   ├── instanced.json                 # 实例化 tileset
+│   ├── non_instanced.json             # 非实例化 tileset
+│   └── analysis/
+│       ├── instancing.csv             # 实例化分析指标
+│       ├── instancing.txt             # 详细文字报告
+│       ├── per_glb.csv                # 每个 GLB 的统计
+│       └── optimization_summary.txt   # 优化汇总
 │
-├── instance_lod_output/               # Instance LOD 输出（如启用 enable_instance_lod_generation）
-│   ├── instance_lod_analysis.csv      # Instance LOD 分析指标
-│   ├── LOD5_Original.glb
-│   ├── LOD4_Variant.glb
-│   ├── LOD3_Class.glb
-│   ├── LOD2_Abstract.glb
-│   ├── LOD1_Proxy.glb
-│   └── tileset_lod.json
+├── 02_instance_lod/                   # Stage 2a：实例化 LOD（如启用）
+│   ├── LOD1.glb ~ LOD5.glb
+│   ├── tileset.json
+│   └── analysis/
+│       └── instance_lod.csv
 │
-├── non_instance_lod_output/           # Non-Instance LOD 输出（如启用 enable_non_instanced_lod_generation）
-│   ├── non_instance_lod_analysis.csv  # Non-Instance LOD 分析指标
+├── 02_non_instance_lod/               # Stage 2b：非实例化 LOD（如启用）
+│   ├── non_instanced_LOD0.glb ~ LODn.glb
+│   ├── tileset.json
+│   └── analysis/
+│       └── non_instance_lod.csv
+│
+├── 03_hlod/                           # Stage 3：HLOD（如启用）
+│   ├── tileset.json
+│   ├── hlod_analysis.csv
+│   └── tiles/
+│       ├── T0_0_0.glb
+│       ├── T1_0_0.glb, T1_1_0.glb, ...
+│       └── ...
+│
+├── 04_segmented/                      # Stage 4：分割输出（如启用）
+│   └── *.glb
+│
+└── _analysis/                         # 汇总分析（CSV 处理等）
+    └── *_results.csv
+```
+
+---
+
+## 三、Legacy 模式输出结构（向后兼容）
+
+当 `output_structure_mode = legacy` 时，保持原有扁平结构：
+
+```
+output_directory/
+├── instancing_analysis.csv
+├── instancing_analysis.txt
+├── instanced_meshes.glb
+├── non_instanced_meshes.glb
+├── tileset_instanced.json
+├── tileset_non_instanced.json
+├── instancing_per_glb.csv
+├── instancing_optimization_summary.txt
+├── *_results.csv
+│
+├── instance_lod_output/
+│   ├── instance_lod_analysis.csv
+│   ├── LOD1.glb ~ LOD5.glb
+│   └── tileset.json
+│
+├── non_instance_lod_output/
+│   ├── non_instance_lod_analysis.csv
 │   └── non_instanced_LOD*.glb
 │
-├── quadtree_output/                   # HLOD输出（如启用）
-│   ├── hlod_analysis.csv              # HLOD分析指标
-│   ├── tileset.json                   # 根tileset
-│   ├── T0_0_0.glb                     # 根瓦片
-│   ├── T1_0_0.glb                     # 第一层瓦片
-│   └── ...
+├── quadtree_output/
+│   ├── hlod_analysis.csv
+│   ├── tileset.json
+│   └── tiles/
+│       └── T*.glb
 │
-└── segmented_glb_output/              # 分割输出（如启用）
+└── segmented_glb_output/
     └── *.glb
 ```
 
 ---
 
-## 三、实验模式输出结构（新增）
+## 四、实验模式输出结构（新增）
 
 当 `enable_experiment_mode = true` 时，**保留原有输出**，同时额外生成：
 
@@ -192,7 +252,7 @@ output_directory/experiments/         # 实验输出在 output_directory 内
 
 ---
 
-## 四、关键文件说明
+## 五、关键文件说明
 
 ### 4.1 原有输出文件（保留）
 
@@ -217,7 +277,7 @@ output_directory/experiments/         # 实验输出在 output_directory 内
 
 ---
 
-## 五、文件关联关系
+## 六、文件关联关系
 
 ```
 普通模式输出（保留）          实验模式输出（新增）
@@ -245,7 +305,7 @@ output_directory/experiments/         # 实验输出在 output_directory 内
 
 ---
 
-## 六、使用示例
+## 七、使用示例
 
 ### 示例1：普通运行（不启用实验模式）
 
@@ -328,7 +388,7 @@ D:/Output/
 
 ---
 
-## 七、注意事项
+## 八、注意事项
 
 1. **磁盘空间**：实验模式会生成额外文件，建议使用符号链接节省空间：
    ```ini
@@ -349,7 +409,7 @@ D:/Output/
 
 ---
 
-## 八、快速查找指南
+## 九、快速查找指南
 
 | 需要查找 | 位置 |
 |----------|------|
