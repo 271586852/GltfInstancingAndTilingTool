@@ -45,72 +45,66 @@ void disableQuickEditMode() {
 #endif
 }
 
-// --- Staged Output Path Helpers ---
-// 当 outputStructureMode == "staged" 时使用分层结构
+// --- 按流水线阶段分层的输出路径 ---
 namespace OutputPaths {
-    inline bool isStaged(const ToolConfiguration& config) {
-        return config.outputStructureMode == "staged";
-    }
     inline std::filesystem::path instancingDir(const ToolConfiguration& config) {
-        return isStaged(config) ? std::filesystem::path(config.outputDirectory) / "01_instancing" : std::filesystem::path(config.outputDirectory);
+        return std::filesystem::path(config.outputDirectory) / "01_instancing";
     }
     inline std::filesystem::path instancedGlb(const ToolConfiguration& config) {
-        return instancingDir(config) / (isStaged(config) ? "instanced.glb" : "instanced_meshes.glb");
+        return instancingDir(config) / "instanced.glb";
     }
     inline std::filesystem::path nonInstancedGlb(const ToolConfiguration& config) {
-        return instancingDir(config) / (isStaged(config) ? "non_instanced.glb" : "non_instanced_meshes.glb");
+        return instancingDir(config) / "non_instanced.glb";
     }
     inline std::filesystem::path instancedTileset(const ToolConfiguration& config) {
-        return instancingDir(config) / (isStaged(config) ? "instanced.json" : "tileset_instanced.json");
+        return instancingDir(config) / "instanced.json";
     }
     inline std::filesystem::path nonInstancedTileset(const ToolConfiguration& config) {
-        return instancingDir(config) / (isStaged(config) ? "non_instanced.json" : "tileset_non_instanced.json");
+        return instancingDir(config) / "non_instanced.json";
     }
     inline std::filesystem::path instancingAnalysisCsv(const ToolConfiguration& config) {
-        return instancingDir(config) / (isStaged(config) ? "analysis" : ".") / (isStaged(config) ? "instancing.csv" : "instancing_analysis.csv");
+        return instancingDir(config) / "analysis" / "instancing.csv";
     }
     inline std::filesystem::path instancingAnalysisTxt(const ToolConfiguration& config) {
-        return instancingDir(config) / (isStaged(config) ? "analysis" : ".") / (isStaged(config) ? "instancing.txt" : "instancing_analysis.txt");
+        return instancingDir(config) / "analysis" / "instancing.txt";
     }
     inline std::filesystem::path instancingPerGlbCsv(const ToolConfiguration& config) {
-        return instancingDir(config) / (isStaged(config) ? "analysis" : ".") / (isStaged(config) ? "per_glb.csv" : "instancing_per_glb.csv");
+        return instancingDir(config) / "analysis" / "per_glb.csv";
     }
     inline std::filesystem::path instancingOptimizationSummary(const ToolConfiguration& config) {
-        return instancingDir(config) / (isStaged(config) ? "analysis" : ".") / (isStaged(config) ? "optimization_summary.txt" : "instancing_optimization_summary.txt");
+        return instancingDir(config) / "analysis" / "optimization_summary.txt";
     }
     inline std::filesystem::path instanceLodDir(const ToolConfiguration& config) {
-        return isStaged(config) ? std::filesystem::path(config.outputDirectory) / "02_instance_lod" : std::filesystem::path(config.outputDirectory) / "instance_lod_output";
+        return std::filesystem::path(config.outputDirectory) / "02_instance_lod";
     }
     inline std::filesystem::path instanceLodAnalysisCsv(const ToolConfiguration& config) {
-        return instanceLodDir(config) / (isStaged(config) ? "analysis" : ".") / (isStaged(config) ? "instance_lod.csv" : "instance_lod_analysis.csv");
+        return instanceLodDir(config) / "analysis" / "instance_lod.csv";
     }
     inline std::filesystem::path nonInstanceLodDir(const ToolConfiguration& config) {
-        return isStaged(config) ? std::filesystem::path(config.outputDirectory) / "02_non_instance_lod" : std::filesystem::path(config.outputDirectory) / "non_instance_lod_output";
+        return std::filesystem::path(config.outputDirectory) / "02_non_instance_lod";
     }
     inline std::filesystem::path nonInstanceLodAnalysisCsv(const ToolConfiguration& config) {
-        return nonInstanceLodDir(config) / (isStaged(config) ? "analysis" : ".") / (isStaged(config) ? "non_instance_lod.csv" : "non_instance_lod_analysis.csv");
+        return nonInstanceLodDir(config) / "analysis" / "non_instance_lod.csv";
     }
     inline std::filesystem::path hlodDir(const ToolConfiguration& config) {
-        return isStaged(config) ? std::filesystem::path(config.outputDirectory) / "03_hlod" : std::filesystem::path(config.outputDirectory) / "quadtree_output";
+        return std::filesystem::path(config.outputDirectory) / "03_hlod";
     }
     inline std::filesystem::path hlodAnalysisCsv(const ToolConfiguration& config) {
-        return hlodDir(config) / "hlod_analysis.csv";  // QuadtreePipeline 固定写入此文件名
+        return hlodDir(config) / "hlod_analysis.csv";
     }
     inline std::filesystem::path segmentedDir(const ToolConfiguration& config) {
-        return isStaged(config) ? std::filesystem::path(config.outputDirectory) / "04_segmented" : std::filesystem::path(config.outputDirectory) / "segmented_glb_output";
+        return std::filesystem::path(config.outputDirectory) / "04_segmented";
     }
     inline std::filesystem::path quadtreeTempInput(const ToolConfiguration& config) {
-        return isStaged(config) ? std::filesystem::path(config.outputDirectory) / "03_hlod" / "_temp_input" : std::filesystem::path(config.outputDirectory) / "quadtree_temp_input";
+        return std::filesystem::path(config.outputDirectory) / "03_hlod" / "_temp_input";
     }
     inline std::filesystem::path analysisDir(const ToolConfiguration& config) {
-        return isStaged(config) ? std::filesystem::path(config.outputDirectory) / "_analysis" : std::filesystem::path(config.outputDirectory);
+        return std::filesystem::path(config.outputDirectory) / "_analysis";
     }
     inline std::filesystem::path resultsCsv(const ToolConfiguration& config, const std::string& baseName) {
         return analysisDir(config) / (baseName + "_results.csv");
     }
-    // 创建 staged 模式所需的所有目录
-    inline void ensureStagedDirectories(const ToolConfiguration& config) {
-        if (!isStaged(config)) return;
+    inline void ensureOutputDirectories(const ToolConfiguration& config) {
         std::filesystem::create_directories(instancingDir(config) / "analysis");
         std::filesystem::create_directories(instanceLodDir(config) / "analysis");
         std::filesystem::create_directories(nonInstanceLodDir(config) / "analysis");
@@ -292,11 +286,6 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 try { config.quadtreeMaxDepth = std::stoi(value); } catch(...) {}
             } else if (key == "quadtree_max_objects_per_tile") {
                 try { config.quadtreeMaxObjectsPerTile = std::stoi(value); } catch(...) {}
-            } else if (key == "output_structure_mode") {
-                std::string mode = value;
-                std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
-                if (mode == "legacy" || mode == "staged") config.outputStructureMode = mode;
-                else GltfInstancing::logWarning("Invalid output_structure_mode: " + value + ". Use 'legacy' or 'staged'. Defaulting to staged.");
             } else if (key == "enable_experiment_mode") {
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") config.enableExperimentMode = true;
@@ -398,7 +387,6 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("  --quadtree-max-objs <value>:         Max objects per tile for Quadtree splitting. Default: 50.");
     GltfInstancing::logInfo("");
     GltfInstancing::logInfo("Experiment Mode Options:");
-    GltfInstancing::logInfo("  --output-structure-mode <legacy|staged>: Output folder structure. staged=by pipeline stage (default).");
     GltfInstancing::logInfo("  --enable-experiment-mode:            Enable experiment mode to organize outputs for comparison.");
     GltfInstancing::logInfo("  --use-symbolic-links:                Use symbolic links instead of copying files (saves disk space).");
     GltfInstancing::logInfo("  --run-cross-glb-hlod-experiment:     Run Experiment 6: Cross-GLB HLOD comparison.");
@@ -1383,20 +1371,6 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-        else if (arg == "--output-structure-mode") {
-            if (argIndex + 1 < argc) {
-                std::string mode = argv[++argIndex];
-                std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
-                if (mode == "legacy" || mode == "staged") {
-                    config.outputStructureMode = mode;
-                    GltfInstancing::logDebug("Command-line override: Output structure mode: " + mode);
-                } else {
-                    GltfInstancing::logWarning("Invalid --output-structure-mode: " + mode + ". Use legacy or staged.");
-                }
-            } else {
-                GltfInstancing::logError("--output-structure-mode option (CLI) requires a value (legacy|staged)."); printUsage(argv[0]); return 1;
-            }
-        }
         else if (arg == "--enable-experiment-mode") {
             config.enableExperimentMode = true;
             GltfInstancing::logDebug("Command-line override: Experiment mode enabled.");
@@ -1660,7 +1634,7 @@ int main(int argc, char* argv[]) {
     // Experiment directories will be created on-demand during result generation.
 
     // Staged 模式：创建分层目录结构
-    OutputPaths::ensureStagedDirectories(config);
+    OutputPaths::ensureOutputDirectories(config);
 
     // 写入 run_manifest.json（运行元数据）
     {
@@ -1673,7 +1647,6 @@ int main(int argc, char* argv[]) {
             std::strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%dT%H:%M:%SZ", std::gmtime(&timeT));
             mf << "{\n  \"timestamp\": \"" << timeBuf << "\",\n";
             mf << "  \"input_directory\": \"" << config.inputDirectory << "\",\n";
-            mf << "  \"output_structure_mode\": \"" << config.outputStructureMode << "\",\n";
             mf << "  \"stages_enabled\": [\"instancing\"";
             if (config.enableInstanceLodGeneration) mf << ", \"instance_lod\"";
             if (config.enableNonInstancedLodGeneration) mf << ", \"non_instance_lod\"";
@@ -1762,8 +1735,8 @@ int main(int argc, char* argv[]) {
         GltfInstancing::logInfo("Non-uniform scale experiment README written to: " + readmePath.string());
     }
 
-    std::filesystem::path instancedGlbFileNameBase = OutputPaths::isStaged(config) ? "instanced" : "instanced_meshes";
-    std::filesystem::path nonInstancedGlbFileNameBase = OutputPaths::isStaged(config) ? "non_instanced" : "non_instanced_meshes";
+    const std::string instancedGlbBase = "instanced";
+    const std::string nonInstancedGlbBase = "non_instanced";
     std::vector<std::filesystem::path> stage1_outputGlbs;
 
     std::optional<std::pair<std::filesystem::path, GltfInstancing::BoundingBox>> instancedWriteResult;
@@ -1774,20 +1747,20 @@ int main(int argc, char* argv[]) {
     std::filesystem::path nonInstancedTilesetPath;
 
     if (config.mergeAllGlb) {
-        std::filesystem::path mergedInstancedGlbPath = OutputPaths::instancingDir(config) / (instancedGlbFileNameBase.string() + ".glb");
+        std::filesystem::path mergedInstancedGlbPath = OutputPaths::instancingDir(config) / (instancedGlbBase + ".glb");
         instancedWriteResult = glbWriter.writeInstancedMeshesOnly(loadedModels, detectionResult, mergedInstancedGlbPath);
         if (instancedWriteResult) stage1_outputGlbs.push_back(instancedWriteResult->first);
 
-        std::filesystem::path mergedNonInstancedGlbPath = OutputPaths::instancingDir(config) / (nonInstancedGlbFileNameBase.string() + ".glb");
+        std::filesystem::path mergedNonInstancedGlbPath = OutputPaths::instancingDir(config) / (nonInstancedGlbBase + ".glb");
         nonInstancedWriteResult = glbWriter.writeNonInstancedMeshesOnly(loadedModels, detectionResult, mergedNonInstancedGlbPath);
         if (nonInstancedWriteResult) stage1_outputGlbs.push_back(nonInstancedWriteResult->first);
     }
     else {
-        std::filesystem::path instancedGlbPath = OutputPaths::instancingDir(config) / (instancedGlbFileNameBase.string() + ".glb");
+        std::filesystem::path instancedGlbPath = OutputPaths::instancingDir(config) / (instancedGlbBase + ".glb");
         instancedWriteResult = glbWriter.writeInstancedMeshesOnly(loadedModels, detectionResult, instancedGlbPath);
         if (instancedWriteResult) stage1_outputGlbs.push_back(instancedWriteResult->first);
 
-        std::filesystem::path nonInstancedGlbPath = OutputPaths::instancingDir(config) / (nonInstancedGlbFileNameBase.string() + ".glb");
+        std::filesystem::path nonInstancedGlbPath = OutputPaths::instancingDir(config) / (nonInstancedGlbBase + ".glb");
         nonInstancedWriteResult = glbWriter.writeNonInstancedMeshesOnly(loadedModels, detectionResult, nonInstancedGlbPath);
         if (nonInstancedWriteResult) stage1_outputGlbs.push_back(nonInstancedWriteResult->first);
     }

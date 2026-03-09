@@ -6,9 +6,7 @@
 1. **普通模式**（向后兼容）：输出到指定目录，保持原有结构
 2. **实验模式**（新增）：额外生成标准化的实验目录结构，便于对比分析
 
-工具支持**两种输出结构**（`output_structure_mode`）：
-- **staged**（默认）：按流水线阶段分层，结构清晰
-- **legacy**：原有扁平结构，向后兼容
+输出按**流水线阶段分层**组织。
 
 ---
 
@@ -31,19 +29,7 @@ output_directory = D:/Experiments/Results
 默认输出目录 = <input_directory>/processed_output
 ```
 
-### 1.2 输出结构模式
-
-```ini
-# staged（默认）：按流水线阶段分层
-output_structure_mode = staged
-
-# legacy：原有扁平结构，向后兼容
-output_structure_mode = legacy
-```
-
-命令行：`--output-structure-mode staged` 或 `--output-structure-mode legacy`
-
-### 1.3 实验模式开关
+### 1.2 实验模式开关
 
 ```ini
 # 启用实验模式（生成额外的标准化实验目录）
@@ -58,9 +44,7 @@ experiment_strategy_id = 02_Moderate_0.05m
 
 ---
 
-## 二、Staged 模式输出结构（默认，推荐）
-
-当 `output_structure_mode = staged` 时，按流水线阶段分层：
+## 二、输出结构（按流水线阶段分层）
 
 ```
 output_directory/
@@ -106,44 +90,7 @@ output_directory/
 
 ---
 
-## 三、Legacy 模式输出结构（向后兼容）
-
-当 `output_structure_mode = legacy` 时，保持原有扁平结构：
-
-```
-output_directory/
-├── instancing_analysis.csv
-├── instancing_analysis.txt
-├── instanced_meshes.glb
-├── non_instanced_meshes.glb
-├── tileset_instanced.json
-├── tileset_non_instanced.json
-├── instancing_per_glb.csv
-├── instancing_optimization_summary.txt
-├── *_results.csv
-│
-├── instance_lod_output/
-│   ├── instance_lod_analysis.csv
-│   ├── LOD1.glb ~ LOD5.glb
-│   └── tileset.json
-│
-├── non_instance_lod_output/
-│   ├── non_instance_lod_analysis.csv
-│   └── non_instanced_LOD*.glb
-│
-├── quadtree_output/
-│   ├── hlod_analysis.csv
-│   ├── tileset.json
-│   └── tiles/
-│       └── T*.glb
-│
-└── segmented_glb_output/
-    └── *.glb
-```
-
----
-
-## 四、实验模式输出结构（新增）
+## 三、实验模式输出结构（新增）
 
 当 `enable_experiment_mode = true` 时，**保留原有输出**，同时额外生成：
 
@@ -252,7 +199,7 @@ output_directory/experiments/         # 实验输出在 output_directory 内
 
 ---
 
-## 五、关键文件说明
+## 四、关键文件说明
 
 ### 4.1 原有输出文件（保留）
 
@@ -277,25 +224,23 @@ output_directory/experiments/         # 实验输出在 output_directory 内
 
 ---
 
-## 六、文件关联关系
+## 五、文件关联关系
 
 ```
-普通模式输出（保留）          实验模式输出（新增）
+主输出（按阶段分层）              实验模式输出（新增）
     │                              │
-    ├── instancing_analysis.csv ──┼──► experiments/01_InstancingStrategy/
-    │                              │       dataset_xxx/02_Moderate_0.05m/
+    ├── 01_instancing/ ────────────┼──► experiments/01_InstancingStrategy/
+    │   analysis/instancing.csv    │       dataset_xxx/02_Moderate_0.05m/
     │                              │           ├── instancing_analysis.csv
     │                              │           ├── config.json
     │                              │           └── README.md
     │                              │
-    ├── instance_lod_output/ ──────┼──► experiments/02_LODStrategy/
-    │   instance_lod_analysis.csv  │       dataset_xxx/A_InstancingLOD/
-    │                              │           ├── instance_lod_analysis.csv
+    ├── 02_instance_lod/ ──────────┼──► experiments/02_LODStrategy/
+    │   analysis/instance_lod.csv  │       dataset_xxx/A_InstancingLOD/
     │                              │           └── ...
     │                              │
-    └── quadtree_output/ ──────────┼──► experiments/06_CrossGLBHLOD/
+    └── 03_hlod/ ──────────────────┼──► experiments/06_CrossGLBHLOD/
             hlod_analysis.csv      │       dataset_xxx/A_MergedHLOD/
-                                   │           ├── hlod_analysis.csv
                                    │           └── ...
                                    │
                                    └── comparison/（自动生成）
@@ -305,7 +250,7 @@ output_directory/experiments/         # 实验输出在 output_directory 内
 
 ---
 
-## 七、使用示例
+## 六、使用示例
 
 ### 示例1：普通运行（不启用实验模式）
 
@@ -319,9 +264,13 @@ enable_experiment_mode = false
 **输出结果**：
 ```
 D:/Output/Results/
-├── instancing_analysis.csv
-├── instanced_meshes.glb
-├── non_instanced_meshes.glb
+├── run_manifest.json
+├── 01_instancing/
+│   ├── instanced.glb, non_instanced.glb
+│   ├── instanced.json, non_instanced.json
+│   └── analysis/
+│       ├── instancing.csv, instancing.txt
+│       └── per_glb.csv, optimization_summary.txt
 └── ...
 ```
 
@@ -340,13 +289,10 @@ instance_limit = 3
 
 **输出结果**：
 ```
-D:/Output/
-├── Results/                              # 原有输出（保留）
-│   ├── instancing_analysis.csv
-│   ├── instanced_meshes.glb
-│   └── ...
-│
-└── experiments/                          # 新增实验目录
+D:/Output/Results/
+├── 01_instancing/
+├── ...
+└── experiments/                          # 实验目录
     └── 01_InstancingStrategy/
         └── dataset_住宅标准层/
             ├── 02_Moderate_0.05m/
@@ -369,10 +315,9 @@ experiment_dataset_name = 多楼层建筑
 
 **输出结果**：
 ```
-D:/Output/
-├── Results/                              # 原有输出
-│   └── ...
-│
+D:/Output/Results/
+├── 01_instancing/
+├── ...
 └── experiments/
     └── 06_CrossGLBHLOD/
         └── dataset_多楼层建筑/
@@ -388,7 +333,7 @@ D:/Output/
 
 ---
 
-## 八、注意事项
+## 七、注意事项
 
 1. **磁盘空间**：实验模式会生成额外文件，建议使用符号链接节省空间：
    ```ini
@@ -409,11 +354,11 @@ D:/Output/
 
 ---
 
-## 九、快速查找指南
+## 八、快速查找指南
 
 | 需要查找 | 位置 |
 |----------|------|
-| 原始分析数据 | `output_directory/instancing_analysis.csv` |
+| 原始分析数据 | `output_directory/01_instancing/analysis/instancing.csv` |
 | 实验对比数据 | `experiments/01_InstancingStrategy/dataset_xxx/comparison/` |
 | 可复现配置 | `experiments/01_InstancingStrategy/dataset_xxx/02_Moderate/config.json` |
 | 论文图表数据 | `experiments/01_InstancingStrategy/dataset_xxx/comparison/charts/` |

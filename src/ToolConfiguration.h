@@ -54,11 +54,6 @@ struct ToolConfiguration {
     int quadtreeMaxDepth = 6;
     int quadtreeMaxObjectsPerTile = 50;
 
-    // --- Output Structure Mode ---
-    // "legacy": 原有扁平结构 (instanced_meshes.glb, instance_lod_output/, quadtree_output/, ...)
-    // "staged": 按流水线阶段分层 (01_instancing/, 02_instance_lod/, 03_hlod/, ...)
-    std::string outputStructureMode = "staged";
-
     // --- Experiment Mode Configuration ---
     bool enableExperimentMode = false;
     bool useSymbolicLinks = false;  // 如果为true，使用符号链接节省空间；如果为false，复制文件
