@@ -1629,8 +1629,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Note: Old experiment directory creation (ExperimentUtils) is disabled.
-    // Using new ExperimentFramework for standardized directory structure.
+    // Using ExperimentFramework for standardized directory structure.
     // Experiment directories will be created on-demand during result generation.
 
     // Staged 模式：创建分层目录结构

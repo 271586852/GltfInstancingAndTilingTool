@@ -30,6 +30,10 @@ backend/results/
 
 src_execution_flow.md
 
+# Temp/backup files
+*.tmp
+*.bak
+
 # System
 .DS_Store
 Thumbs.db

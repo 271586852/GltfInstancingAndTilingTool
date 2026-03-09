@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.16)
 
 project(GltfInstancingTool LANGUAGES CXX)
 
@@ -55,9 +55,6 @@ set(PROJECT_SOURCES
     src/NonInstancingLOD_manager.cpp
     src/experiment_framework.cpp
     src/experiment6_runner.cpp
-
-    #src/utils.cpp
-    #src/tileset_generator.cpp
 )
 add_executable(gltf_instancer ${PROJECT_SOURCES})
 message(STATUS "Executable 'gltf_instancer' added.")
