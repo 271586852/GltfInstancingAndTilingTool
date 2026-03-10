@@ -8,6 +8,7 @@
 #include <CesiumGltf/AccessorView.h>
 #include <iostream>
 #include <fstream>
+#include <algorithm>
 #include <glm/vec3.hpp>
 #include <cfloat>
 
@@ -62,47 +63,52 @@ namespace NonInstancingLOD {
 
         CesiumGltf::Model currentModel = std::move(*modelResult.model);
         
-        // LOD0 is the original
-        std::string lod0Name = "non_instanced_LOD0.glb";
-        std::filesystem::path lod0Path = outputDir / lod0Name;
+        // LOD 越大越精细：LOD0=最粗, LOD1..LODn=渐细, LODn=原始(最精细)
+        // LOD{levels} = 原始 (最精细)
+        const int finestLevel = levels;
+        std::string lodFinestName = "non_instanced_LOD" + std::to_string(finestLevel) + ".glb";
+        std::filesystem::path lodFinestPath = outputDir / lodFinestName;
         
         try {
-            std::filesystem::copy_file(inputPath, lod0Path, std::filesystem::copy_options::overwrite_existing);
-            generatedLevels.push_back({0, lod0Path, 0.0});
+            std::filesystem::copy_file(inputPath, lodFinestPath, std::filesystem::copy_options::overwrite_existing);
+            generatedLevels.push_back({finestLevel, lodFinestPath, 0.0});
 
-            // Calculate LOD0 stats
-            LodStats lod0Stats;
-            lod0Stats.level = 0;
-            lod0Stats.filename = lod0Name;
+            // Calculate LOD{levels} stats (finest = original)
+            LodStats lodFinestStats;
+            lodFinestStats.level = finestLevel;
+            lodFinestStats.filename = lodFinestName;
             try {
-                lod0Stats.fileSizeMB = (double)std::filesystem::file_size(lod0Path) / (1024.0 * 1024.0);
-            } catch (...) { lod0Stats.fileSizeMB = 0.0; }
+                lodFinestStats.fileSizeMB = (double)std::filesystem::file_size(lodFinestPath) / (1024.0 * 1024.0);
+            } catch (...) { lodFinestStats.fileSizeMB = 0.0; }
             
-            lod0Stats.triangleCount = 0;
+            lodFinestStats.triangleCount = 0;
             for (const auto& mesh : currentModel.meshes) {
                 for (const auto& prim : mesh.primitives) {
                     if (prim.indices >= 0) {
                         const auto& acc = currentModel.accessors[prim.indices];
-                        lod0Stats.triangleCount += acc.count / 3;
+                        lodFinestStats.triangleCount += acc.count / 3;
                     }
                 }
             }
-            lod0Stats.originalTriangleCount = lod0Stats.triangleCount;
-            allStats.push_back(lod0Stats);
+            lodFinestStats.originalTriangleCount = lodFinestStats.triangleCount;
+            allStats.push_back(lodFinestStats);
 
         } catch (const std::exception& e) {
-            GltfInstancing::logError("NonInstancingLODManager: Failed to copy LOD0: " + std::string(e.what()));
+            GltfInstancing::logError("NonInstancingLODManager: Failed to copy LOD" + std::to_string(finestLevel) + ".glb: " + std::string(e.what()));
             return generatedLevels;
         }
 
         float currentRatio = ratio;
         
+        // LOD 越大越精细：LOD0=最粗, LODlevels=最细(原始)
+        // i=1 生成最粗 -> LOD0, i=2 -> LOD1, ..., i=levels -> LOD(levels-1)
         for (int i = 1; i <= levels; ++i) {
-            GltfInstancing::logInfo("Generating Non-Instanced LOD " + std::to_string(i) + " (Target Ratio: " + std::to_string(currentRatio) + ")");
+            int outputLevel = levels - i;  // 0, 1, ..., levels-1
+            GltfInstancing::logInfo("Generating Non-Instanced LOD " + std::to_string(outputLevel) + " (Target Ratio: " + std::to_string(currentRatio) + ", LOD越大越精细)");
             
             CesiumGltf::Model simplified = simplifyModel(currentModel, currentRatio, minSimplifyIndexCount);
             
-            std::string lodName = "non_instanced_LOD" + std::to_string(i) + ".glb";
+            std::string lodName = "non_instanced_LOD" + std::to_string(outputLevel) + ".glb";
             std::filesystem::path lodPath = outputDir / lodName;
 
             CesiumGltfWriter::GltfWriter writer;
@@ -131,12 +137,12 @@ namespace NonInstancingLOD {
             outFile.close();
             
             // Calculate error (heuristic)
-            double error = 16.0 * std::pow(2.0, i - 1); 
-            generatedLevels.push_back({i, lodPath, error});
+            double error = 16.0 * std::pow(2.0, outputLevel);
+            generatedLevels.push_back({outputLevel, lodPath, error});
 
             // Calculate LOD stats
             LodStats stats;
-            stats.level = i;
+            stats.level = outputLevel;
             stats.filename = lodName;
             try {
                 stats.fileSizeMB = (double)std::filesystem::file_size(lodPath) / (1024.0 * 1024.0);
@@ -157,12 +163,14 @@ namespace NonInstancingLOD {
             currentRatio *= ratio; 
         }
 
-        // Write CSV Report (Non-Instance LOD)
-        std::filesystem::path reportPath = outputDir / "non_instance_lod_analysis.csv";
+        // Write CSV Report (Non-Instance LOD) -> 02_non_instance_lod/analysis/
+        std::filesystem::create_directories(outputDir / "analysis");
+        std::filesystem::path reportPath = outputDir / "analysis" / "non_instance_lod_analysis.csv";
         std::ofstream reportFile(reportPath);
         if (reportFile.is_open()) {
-            reportFile << "# Non-Instance LOD Analysis\n";
+            reportFile << "# Non-Instance LOD Analysis (LOD越大越精细)\n";
             reportFile << "Level,Filename,File Size (MB),Triangle Count,Original Triangles,Reduction Ratio (Triangles),Reduction Ratio (File Size)\n";
+            std::sort(allStats.begin(), allStats.end(), [](const LodStats& a, const LodStats& b) { return a.level < b.level; });
             for (const auto& s : allStats) {
                 double triRatio = (s.originalTriangleCount > 0) ? (1.0 - (double)s.triangleCount / s.originalTriangleCount) * 100.0 : 0.0;
                 double sizeRatio = (allStats[0].fileSizeMB > 0) ? (1.0 - s.fileSizeMB / allStats[0].fileSizeMB) * 100.0 : 0.0;
@@ -196,24 +204,24 @@ namespace NonInstancingLOD {
         auto generatedLevels = generateLODFilesOnly(inputPath, outputDir, levels, ratio, minSimplifyIndexCount);
         if (generatedLevels.empty()) return;
 
-        // Generate Tileset (Old logic adapted)
+        // Generate Tileset: LOD0(最粗)=root, LODn(最细)=leaf
+        std::sort(generatedLevels.begin(), generatedLevels.end(),
+            [](const auto& a, const auto& b) { return a.level < b.level; });
+        
         GltfInstancing::TilesetNode rootNode;
         GltfInstancing::TilesetNode* current = &rootNode;
         
-        // Reverse iterate to build hierarchy: Coarsest (Last) -> Finest (First)
-        // levels returned are [0, 1, 2...]. 
-        for (int i = generatedLevels.size() - 1; i >= 0; --i) {
+        for (size_t i = 0; i < generatedLevels.size(); ++i) {
             GltfInstancing::TilesetNode node;
             node.contentUri = generatedLevels[i].filePath.filename().string();
             
             double error = generatedLevels[i].geometricError;
-            // Root (coarsest) needs high error
-            if (i == generatedLevels.size() - 1) error = 1000.0;
+            if (i == 0) error = 1000.0;  // Root (LOD0, coarsest)
 
             node.geometricError = error;
             node.boundingVolume = { glm::dvec3(-10000), glm::dvec3(10000) }; 
             
-            if (i == generatedLevels.size() - 1) {
+            if (i == 0) {
                 rootNode = node;
                 current = &rootNode;
             } else {

@@ -5,7 +5,9 @@
 #include "tileset_writer.h"
 #include "ToolConfiguration.h" 
 #include "NonInstancingLOD_manager.h" 
-#include "instancing_detector.h"      
+#include "instancing_detector.h"
+#include "semantic_hausdorff_detector.h"
+#include "semantic_parser.h"      
 
 #include <iostream>
 #include <fstream>
@@ -797,20 +799,37 @@ namespace QuadtreePipeline {
         
         std::vector<GltfInstancing::LoadedGltfModel> models = { std::move(loadedForDet) };
         
-        // Use HLOD-specific instancing detection parameters
-        // If HLOD parameters are not set, use Stage 1 parameters
-        double hlodGeometryTolerance = _config.hlodGeometryToleranceSet ? 
-            _config.hlodGeometryTolerance : _config.geometryTolerance;
-        double hlodNormalTolerance = _config.hlodNormalToleranceSet ? 
-            _config.hlodNormalTolerance : _config.normalTolerance;
-        std::set<std::string> hlodAttributesToSkip = _config.hlodAttributesToSkipDataHashSet ? 
-            _config.hlodAttributesToSkipDataHash : _config.attributesToSkipDataHash;
         int hlodInstanceLimit = _config.hlodInstanceLimitSet ? 
             _config.hlodInstanceLimit : _config.instanceLimit;
-        bool hlodAllowNonUniformScale = _config.hlodAllowNonUniformScaleInstancing;
-        
-        GltfInstancing::InstancingDetector detector(hlodGeometryTolerance, hlodAttributesToSkip, hlodNormalTolerance, hlodInstanceLimit, hlodAllowNonUniformScale);
-        auto result = detector.detect(models);
+        std::string mode = _config.instancingDetectionMode;
+        std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
+
+        GltfInstancing::InstancingDetectionResult result;
+        if (mode == "semantic_hausdorff") {
+            GltfInstancing::SemanticParser semanticParser;
+            if (!_config.semanticDataPath.empty() && std::filesystem::exists(_config.semanticDataPath)) {
+                if (std::filesystem::is_directory(_config.semanticDataPath)) {
+                    std::string discoverDir = _config.semanticInputDirectory.empty() ? _config.inputDirectory : _config.semanticInputDirectory;
+                    auto discovered = GltfInstancing::GlbReader().discoverGlbFiles(discoverDir, true);
+                    semanticParser.parseFromFolder(_config.semanticDataPath, discovered);
+                } else {
+                    semanticParser.parse(_config.semanticDataPath);
+                }
+            }
+            GltfInstancing::SemanticHausdorffInstancingDetector detector(
+                &semanticParser, _config.semanticHashFields, _config.hlodSimilarityThreshold, hlodInstanceLimit);
+            result = detector.detect(models);
+        } else {
+            double hlodGeometryTolerance = _config.hlodGeometryToleranceSet ? 
+                _config.hlodGeometryTolerance : _config.geometryTolerance;
+            double hlodNormalTolerance = _config.hlodNormalToleranceSet ? 
+                _config.hlodNormalTolerance : _config.normalTolerance;
+            std::set<std::string> hlodAttributesToSkip = _config.hlodAttributesToSkipDataHashSet ? 
+                _config.hlodAttributesToSkipDataHash : _config.attributesToSkipDataHash;
+            bool hlodAllowNonUniformScale = _config.hlodAllowNonUniformScaleInstancing;
+            GltfInstancing::InstancingDetector detector(hlodGeometryTolerance, hlodAttributesToSkip, hlodNormalTolerance, hlodInstanceLimit, hlodAllowNonUniformScale);
+            result = detector.detect(models);
+        }
         
         GltfInstancing::GlbWriter writer;
         auto writeRes = writer.writeInstancedGlb(models, result, outputGlbPath);

@@ -99,8 +99,11 @@ namespace GltfInstancing {
             info.volume = size.x * size.y * size.z;
             info.diagonal = glm::length(size);
 
-            // 获取语义信息
-            auto semOpt = semanticParser.getSemanticInfo(info.meshName);
+            // 获取语义信息 (支持 glbStem + meshHash 匹配)
+            std::string glbStem;
+            if (info.sourceModelIndex >= 0 && info.sourceModelIndex < static_cast<int>(loadedModels.size()))
+                glbStem = loadedModels[info.sourceModelIndex].originalPath.stem().string();
+            auto semOpt = semanticParser.getSemanticInfo(glbStem, info.meshName);
             if (semOpt.has_value()) {
                 info.semantic = semOpt.value();
             } else {

@@ -46,6 +46,8 @@ set(PROJECT_SOURCES
     src/main.cpp
     src/glb_reader.cpp
     src/instancing_detector.cpp
+    src/hausdorff_similarity.cpp
+    src/semantic_hausdorff_detector.cpp
     src/glb_writer.cpp
     src/semantic_parser.cpp
     src/instancingLOD_manager.cpp

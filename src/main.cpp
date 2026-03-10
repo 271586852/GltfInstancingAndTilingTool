@@ -1,5 +1,6 @@
 #include "glb_reader.h"
 #include "instancing_detector.h"
+#include "semantic_hausdorff_detector.h"
 #include "glb_writer.h"
 #include "tileset_writer.h"
 #include "utilities.h"
@@ -84,7 +85,7 @@ namespace OutputPaths {
         return std::filesystem::path(config.outputDirectory) / "02_non_instance_lod";
     }
     inline std::filesystem::path nonInstanceLodAnalysisCsv(const ToolConfiguration& config) {
-        return nonInstanceLodDir(config) / "analysis" / "non_instance_lod.csv";
+        return nonInstanceLodDir(config) / "analysis" / "non_instance_lod_analysis.csv";
     }
     inline std::filesystem::path hlodDir(const ToolConfiguration& config) {
         return std::filesystem::path(config.outputDirectory) / "03_hlod";
@@ -225,6 +226,34 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 } else {
                     GltfInstancing::logWarning("Invalid boolean value for 'allow_non_uniform_scale_instancing' in config file (line " + std::to_string(lineNumber) + "): " + value);
                 }
+            } else if (key == "instancing_detection_mode") {
+                std::string modeLower = value;
+                std::transform(modeLower.begin(), modeLower.end(), modeLower.begin(), ::tolower);
+                if (modeLower == "legacy" || modeLower == "semantic_hausdorff") {
+                    config.instancingDetectionMode = modeLower;
+                } else {
+                    GltfInstancing::logWarning("Invalid instancing_detection_mode '" + value + "'. Use 'legacy' or 'semantic_hausdorff'. Using default 'legacy'.");
+                }
+            } else if (key == "semantic_hash_fields") {
+                config.semanticHashFields = value;
+            } else if (key == "similarity_thresholds") {
+                config.similarityThresholds = value;
+                config.similarityThresholdsParsed.clear();
+                std::istringstream ss(value);
+                std::string part;
+                while (std::getline(ss, part, ',')) {
+                    try {
+                        double v = std::stod(part);
+                        config.similarityThresholdsParsed.push_back(std::max(0.0, std::min(1.0, v)));
+                    } catch (...) {}
+                }
+            } else if (key == "hlod_similarity_threshold") {
+                try {
+                    config.hlodSimilarityThreshold = std::stod(value);
+                    config.hlodSimilarityThreshold = std::max(0.0, std::min(1.0, config.hlodSimilarityThreshold));
+                } catch (const std::exception& e) {
+                    GltfInstancing::logWarning("Invalid value for 'hlod_similarity_threshold': " + value + ". Error: " + e.what());
+                }
             } else if (key == "mesh_segmentation") {
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") {
@@ -262,6 +291,8 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 else config.enableGeometricCheck = false;
             } else if (key == "semantic_data_path") {
                 config.semanticDataPath = value;
+            } else if (key == "semantic_input_directory") {
+                config.semanticInputDirectory = value;
             }
             // --- Non-Instanced LOD Config Parsing ---
             else if (key == "enable_non_instanced_lod_generation") {
@@ -360,6 +391,22 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
         }
     }
     configFile.close();
+
+    // Ensure similarityThresholdsParsed is populated (from config or default)
+    if (config.similarityThresholdsParsed.empty() && !config.similarityThresholds.empty()) {
+        std::istringstream ss(config.similarityThresholds);
+        std::string part;
+        while (std::getline(ss, part, ',')) {
+            try {
+                double v = std::stod(part);
+                config.similarityThresholdsParsed.push_back(std::max(0.0, std::min(1.0, v)));
+            } catch (...) {}
+        }
+    }
+    if (config.similarityThresholdsParsed.empty()) {
+        config.similarityThresholdsParsed = { 0.95, 0.90, 0.85, 0.80, 0.75 };
+    }
+
     GltfInstancing::logInfo("Finished loading configuration from: " + configFilePath);
     return true;
 }
@@ -380,6 +427,7 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("  --normal-tolerance <value>:          Tolerance for NORMAL vector comparison. Default: 0.0.");
     GltfInstancing::logInfo("  --merge-all-glb:                     Merge all GLB outputs into a single file per type. Default: false.");
     GltfInstancing::logInfo("  --instance-limit <value>:            Minimum number of instances to form a group. Default: 2.");
+    GltfInstancing::logInfo("  --instancing-detection-mode <mode>:  'legacy' (hash+bbox) or 'semantic_hausdorff'. Default: legacy.");
     GltfInstancing::logInfo("  --mesh-segmentation:                 Export each mesh as a separate GLB file. Default: false.");
     GltfInstancing::logInfo("  --csv-dir <path>:                    Path to directory with CSV files for post-processing.");
     GltfInstancing::logInfo("  --enable-quadtree:                   Enable Quadtree HLOD pipeline. Default: false.");
@@ -1401,6 +1449,20 @@ int main(int argc, char* argv[]) {
                 GltfInstancing::logError("--experiment-strategy-id option (CLI) requires a value."); printUsage(argv[0]); return 1;
             }
         }
+        else if (arg == "--instancing-detection-mode") {
+            if (argIndex + 1 < argc) {
+                std::string mode = argv[++argIndex];
+                std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
+                if (mode == "legacy" || mode == "semantic_hausdorff") {
+                    config.instancingDetectionMode = mode;
+                    GltfInstancing::logDebug("Command-line override: Instancing detection mode: " + config.instancingDetectionMode);
+                } else {
+                    GltfInstancing::logWarning("Invalid --instancing-detection-mode. Use 'legacy' or 'semantic_hausdorff'.");
+                }
+            } else {
+                GltfInstancing::logError("--instancing-detection-mode requires a value."); printUsage(argv[0]); return 1;
+            }
+        }
         else if (arg == "--hlod-tolerance" || arg == "--hlod-geometry-tolerance") {
             if (argIndex + 1 < argc) {
                 try {
@@ -1491,6 +1553,21 @@ int main(int argc, char* argv[]) {
         std::filesystem::path inputPath(config.inputDirectory);
         config.outputDirectory = (inputPath / "processed_output").string();
         GltfInstancing::logInfo("Output directory not specified, defaulting to: " + config.outputDirectory);
+    }
+
+    // Ensure similarityThresholdsParsed is populated (for semantic_hausdorff mode when no config file)
+    if (config.similarityThresholdsParsed.empty() && !config.similarityThresholds.empty()) {
+        std::istringstream ss(config.similarityThresholds);
+        std::string part;
+        while (std::getline(ss, part, ',')) {
+            try {
+                double v = std::stod(part);
+                config.similarityThresholdsParsed.push_back(std::max(0.0, std::min(1.0, v)));
+            } catch (...) {}
+        }
+    }
+    if (config.similarityThresholdsParsed.empty()) {
+        config.similarityThresholdsParsed = { 0.95, 0.90, 0.85, 0.80, 0.75 };
     }
 
     // --- Quadtree Pipeline Execution ---
@@ -1674,9 +1751,33 @@ int main(int argc, char* argv[]) {
     GltfInstancing::logInfo("Successfully loaded " + std::to_string(loadedModels.size()) + " initial GLB model(s).");
 
     GltfInstancing::logInfo("Stage 1: Detecting instancing opportunities...");
-    // Stage 1 uses Stage 1 parameters (config.geometryTolerance, etc.)
-    GltfInstancing::InstancingDetector detector(config.geometryTolerance, config.attributesToSkipDataHash, config.normalTolerance, config.instanceLimit, config.allowNonUniformScaleInstancing);
-    GltfInstancing::InstancingDetectionResult detectionResult = detector.detect(loadedModels);
+    GltfInstancing::InstancingDetectionResult detectionResult;
+    {
+        std::string mode = config.instancingDetectionMode;
+        std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
+        if (mode == "semantic_hausdorff") {
+            GltfInstancing::logInfo("Using semantic_hausdorff instancing detection mode.");
+            GltfInstancing::SemanticParser semanticParser;
+            if (!config.semanticDataPath.empty() && std::filesystem::exists(config.semanticDataPath)) {
+                if (std::filesystem::is_directory(config.semanticDataPath)) {
+                    if (!semanticParser.parseFromFolder(config.semanticDataPath, initialGlbFilePaths))
+                        GltfInstancing::logWarning("No matching RISCRVT files found in semantic folder. All meshes will be grouped under 'unknown'.");
+                } else {
+                    semanticParser.parse(config.semanticDataPath);
+                }
+            } else {
+                GltfInstancing::logWarning("Semantic data path invalid or not set. All meshes will be grouped under 'unknown'.");
+            }
+            double threshold = config.similarityThresholdsParsed.empty() ? 0.95 : config.similarityThresholdsParsed[0];
+            GltfInstancing::SemanticHausdorffInstancingDetector detector(
+                &semanticParser, config.semanticHashFields, threshold, config.instanceLimit);
+            detectionResult = detector.detect(loadedModels);
+        } else {
+            GltfInstancing::logInfo("Using legacy instancing detection mode.");
+            GltfInstancing::InstancingDetector detector(config.geometryTolerance, config.attributesToSkipDataHash, config.normalTolerance, config.instanceLimit, config.allowNonUniformScaleInstancing);
+            detectionResult = detector.detect(loadedModels);
+        }
+    }
     GltfInstancing::logInfo("Stage 1: Instancing detection finished. Generating optimization analysis outputs...");
 
     GltfInstancing::GlbWriter glbWriter;
@@ -1848,23 +1949,25 @@ int main(int argc, char* argv[]) {
             // -------------------------------------------------------
             // 1. Always generate Standard Tileset (Base functionality)
             // -------------------------------------------------------
-            GltfInstancing::logInfo("Organizing generated LOD files into standard tileset...");
+            GltfInstancing::logInfo("Organizing generated LOD files into standard tileset (LOD越大越精细)...");
+
+            std::sort(lodLevels.begin(), lodLevels.end(),
+                [](const auto& a, const auto& b) { return a.level < b.level; });
 
             GltfInstancing::TilesetNode standardRoot;
             GltfInstancing::TilesetNode* stdCurrent = &standardRoot;
 
-            // Reverse iterate (Coarsest -> Finest)
-            for (int i = lodLevels.size() - 1; i >= 0; --i) {
+            for (size_t i = 0; i < lodLevels.size(); ++i) {
                 GltfInstancing::TilesetNode node;
                 node.contentUri = lodLevels[i].filePath.filename().string();
 
                 double error = lodLevels[i].geometricError;
-                if (i == lodLevels.size() - 1) error = 1000.0; // Root error
+                if (i == 0) error = 1000.0;  // Root (LOD0, coarsest)
 
                 node.geometricError = error;
                 node.boundingVolume = { glm::dvec3(-10000), glm::dvec3(10000) };
 
-                if (i == lodLevels.size() - 1) {
+                if (i == 0) {
                     standardRoot = node;
                     stdCurrent = &standardRoot;
                 }
@@ -1891,18 +1994,9 @@ int main(int argc, char* argv[]) {
                 std::vector<GltfInstancing::TilesetNode> finalNodes;
                 GltfInstancing::GlbReader lodReader;
 
-                // Use HLOD-specific instancing detection parameters
                 auto hlodParams = getHlodInstancingParams(config);
-                GltfInstancing::InstancingDetector lodDetector(
-                    hlodParams.geometryTolerance,
-                    hlodParams.attributesToSkipDataHash,
-                    hlodParams.normalTolerance,
-                    hlodParams.instanceLimit,
-                    hlodParams.allowNonUniformScaleInstancing
-                );
-                GltfInstancing::logInfo("Using HLOD instancing detection parameters: tolerance=" +
-                    std::to_string(hlodParams.geometryTolerance) + ", instance_limit=" +
-                    std::to_string(hlodParams.instanceLimit));
+                std::string lodMode = config.instancingDetectionMode;
+                std::transform(lodMode.begin(), lodMode.end(), lodMode.begin(), ::tolower);
 
                 for (const auto& levelInfo : lodLevels) {
                     GltfInstancing::logInfo("Processing Level " + std::to_string(levelInfo.level) + " for instancing...");
@@ -1911,7 +2005,29 @@ int main(int argc, char* argv[]) {
                     auto lodModels = lodReader.loadGltfModels(fileSet);
                     if (lodModels.empty()) continue;
 
-                    auto lodDetectionResult = lodDetector.detect(lodModels);
+                    GltfInstancing::InstancingDetectionResult lodDetectionResult;
+                    if (lodMode == "semantic_hausdorff") {
+                        GltfInstancing::SemanticParser lodSemanticParser;
+                        if (!config.semanticDataPath.empty() && std::filesystem::exists(config.semanticDataPath)) {
+                            if (std::filesystem::is_directory(config.semanticDataPath))
+                                lodSemanticParser.parseFromFolder(config.semanticDataPath, initialGlbFilePaths);
+                            else
+                                lodSemanticParser.parse(config.semanticDataPath);
+                        }
+                        double thresh = (levelInfo.level < static_cast<int>(config.similarityThresholdsParsed.size()))
+                            ? config.similarityThresholdsParsed[levelInfo.level] : config.hlodSimilarityThreshold;
+                        GltfInstancing::SemanticHausdorffInstancingDetector lodDetector(
+                            &lodSemanticParser, config.semanticHashFields, thresh, hlodParams.instanceLimit);
+                        lodDetectionResult = lodDetector.detect(lodModels);
+                    } else {
+                        GltfInstancing::InstancingDetector lodDetector(
+                            hlodParams.geometryTolerance,
+                            hlodParams.attributesToSkipDataHash,
+                            hlodParams.normalTolerance,
+                            hlodParams.instanceLimit,
+                            hlodParams.allowNonUniformScaleInstancing);
+                        lodDetectionResult = lodDetector.detect(lodModels);
+                    }
 
                     std::string baseName = levelInfo.filePath.stem().string();
                     // Output to subfolder
@@ -2012,7 +2128,13 @@ int main(int argc, char* argv[]) {
 
         GltfInstancing::SemanticParser semanticParser;
         if (!config.semanticDataPath.empty() && std::filesystem::exists(config.semanticDataPath)) {
-            semanticParser.parse(config.semanticDataPath);
+            if (std::filesystem::is_directory(config.semanticDataPath)) {
+                std::set<std::filesystem::path> lodGlbPaths;
+                for (const auto& m : loadedModels) lodGlbPaths.insert(m.originalPath);
+                semanticParser.parseFromFolder(config.semanticDataPath, lodGlbPaths);
+            } else {
+                semanticParser.parse(config.semanticDataPath);
+            }
         }
         else {
             GltfInstancing::logWarning("Semantic data path invalid or not set. LOD generation will proceed without semantic hints (mostly geometry-based).");

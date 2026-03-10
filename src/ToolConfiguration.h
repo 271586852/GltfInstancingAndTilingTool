@@ -19,6 +19,16 @@ struct ToolConfiguration {
     bool csvDirectorySet = false;
     bool allowNonUniformScaleInstancing = false;
 
+    // --- Semantic + Hausdorff Instancing Mode (Alternative to legacy hash-based) ---
+    // instancing_detection_mode: "legacy" (hash+bbox) or "semantic_hausdorff" (semantic hash + Hausdorff similarity)
+    std::string instancingDetectionMode = "legacy";
+    // semantic_hash_fields: comma-separated, e.g. "category,family,type" (maps to Element_Category, Element_Family, Element_Type)
+    std::string semanticHashFields = "category,family,type";
+    // similarity_thresholds: per-LOD thresholds, comma-separated, e.g. "0.95,0.90,0.85,0.80,0.75" (LOD0=finest to LOD4=coarsest)
+    std::string similarityThresholds = "0.95,0.90,0.85,0.80,0.75";
+    std::vector<double> similarityThresholdsParsed;  // Parsed from similarityThresholds
+    double hlodSimilarityThreshold = 0.70;
+
     // --- Instance LOD (Instancing LOD) Configuration ---
     bool enableInstanceLodGeneration = false;
     int lodLevelCount = 5;
@@ -27,7 +37,8 @@ struct ToolConfiguration {
     bool enableGeometricCheck = true;
     double lod4SizeTolerance = 0.05;
     double lod3AspectRatioTolerance = 0.20;
-    std::string semanticDataPath;
+    std::string semanticDataPath;  // 单文件路径或文件夹；若为文件夹，按 input_directory 下 GLB 文件名匹配同名 .RISCRVT
+    std::string semanticInputDirectory;  // 可选：当 semantic_data_path 为文件夹时，用于匹配的 GLB 来源目录（默认用 input_directory）
     
     // --- HLOD Instancing Detection Parameters (Independent from Stage 1) ---
     // These parameters are used for instancing detection in HLOD/LOD generation pipelines

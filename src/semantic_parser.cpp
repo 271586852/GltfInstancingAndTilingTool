@@ -19,11 +19,7 @@ namespace GltfInstancing {
         return output;
     }
 
-    // 一个简单的流式 XML 解析器，专门针对 .RISCRVT 格式优化
-    // 不依赖庞大的第三方 XML 库，只提取我们需要的数据
-    bool SemanticParser::parse(const std::string& xmlPath) {
-        logMessage("Parsing semantic XML: " + xmlPath);
-
+    bool SemanticParser::parseSingleFile(const std::string& xmlPath, const std::string& prefixForKey) {
         std::ifstream file(xmlPath);
         if (!file.is_open()) {
             logError("Failed to open XML file: " + xmlPath);
@@ -35,84 +31,106 @@ namespace GltfInstancing {
         SemanticInfo currentInfo;
         bool inMetaDataBlock = false;
 
-        // 逐行读取，状态机模式
         while (std::getline(file, line)) {
-            // 1. 查找 MetaData 开始标签，提取 Hash ID
-            // 格式示例: <MetaData name="HASH_DATA" reference="Actor.HASH">
             if (line.find("<MetaData") != std::string::npos) {
                 size_t refPos = line.find("reference=\"Actor.");
                 if (refPos != std::string::npos) {
-                    size_t start = refPos + 17; // "reference=\"Actor.".length()
+                    size_t start = refPos + 17;
                     size_t end = line.find("\"", start);
                     if (end != std::string::npos) {
                         currentHashId = line.substr(start, end - start);
                         inMetaDataBlock = true;
-                        // 重置当前 info
                         currentInfo = SemanticInfo();
                     }
                 }
             }
-            // 2. 查找 MetaData 结束标签
             else if (line.find("</MetaData>") != std::string::npos) {
                 if (inMetaDataBlock && !currentHashId.empty()) {
-                    // 保存当前块的数据
-                    // 只有当至少有一个关键属性存在时才保存
                     if (!currentInfo.category.empty() || !currentInfo.family.empty()) {
-                        _semanticMap[currentHashId] = currentInfo;
+                        std::string key = prefixForKey.empty() ? currentHashId : (prefixForKey + "|" + currentHashId);
+                        _semanticMap[key] = currentInfo;
                     }
                 }
                 inMetaDataBlock = false;
                 currentHashId.clear();
             }
-            // 3. 在 MetaData 块内查找属性
-            // 格式示例: <KeyValueProperty name="Element_Category" type="String" val="家具"/>
             else if (inMetaDataBlock) {
                 if (line.find("<KeyValueProperty") != std::string::npos) {
-                    // 提取 name
                     std::string nameAttr = "name=\"";
                     size_t namePos = line.find(nameAttr);
-                    
-                    // 提取 val
                     std::string valAttr = "val=\"";
                     size_t valPos = line.find(valAttr);
 
                     if (namePos != std::string::npos && valPos != std::string::npos) {
-                        // 解析 Name
                         size_t nameStart = namePos + nameAttr.length();
                         size_t nameEnd = line.find("\"", nameStart);
                         std::string key = line.substr(nameStart, nameEnd - nameStart);
 
-                        // 解析 Value
                         size_t valStart = valPos + valAttr.length();
                         size_t valEnd = line.find("\"", valStart);
                         std::string value = line.substr(valStart, valEnd - valStart);
 
-                        // 填充 SemanticInfo
-                        if (key == "Element_Category") {
-                            currentInfo.category = value;
-                        }
-                        else if (key == "Element_Family") {
-                            currentInfo.family = value;
-                        }
-                        else if (key == "Element_Type") {
-                            currentInfo.type = value;
-                        }
+                        if (key == "Element_Category") currentInfo.category = value;
+                        else if (key == "Element_Family") currentInfo.family = value;
+                        else if (key == "Element_Type") currentInfo.type = value;
                     }
                 }
             }
         }
 
         file.close();
-        logMessage("Semantic parsing complete. Loaded info for " + std::to_string(_semanticMap.size()) + " actors.");
         return true;
+    }
+
+    bool SemanticParser::parse(const std::string& xmlPath) {
+        logMessage("Parsing semantic XML: " + xmlPath);
+        _folderMode = false;
+        _semanticMap.clear();
+        bool ok = parseSingleFile(xmlPath, "");
+        if (ok) logMessage("Semantic parsing complete. Loaded info for " + std::to_string(_semanticMap.size()) + " actors.");
+        return ok;
+    }
+
+    bool SemanticParser::parseFromFolder(const std::string& semanticDataPath, const std::set<std::filesystem::path>& glbPaths) {
+        logMessage("Parsing semantic data from folder: " + semanticDataPath + " (matching GLB filenames)");
+        _folderMode = true;
+        _semanticMap.clear();
+
+        std::filesystem::path basePath(semanticDataPath);
+        if (!std::filesystem::exists(basePath) || !std::filesystem::is_directory(basePath)) {
+            logError("Semantic data path is not a valid directory: " + semanticDataPath);
+            return false;
+        }
+
+        size_t totalLoaded = 0;
+        for (const auto& glbPath : glbPaths) {
+            std::string stem = glbPath.stem().string();
+            std::filesystem::path riscrvtPath = basePath / (stem + ".RISCRVT");
+            if (!std::filesystem::exists(riscrvtPath)) continue;
+
+            size_t before = _semanticMap.size();
+            if (parseSingleFile(riscrvtPath.string(), stem)) {
+                totalLoaded += _semanticMap.size() - before;
+            }
+        }
+
+        logMessage("Semantic parsing complete. Loaded info for " + std::to_string(_semanticMap.size()) + " actors from " + std::to_string(glbPaths.size()) + " GLB(s).");
+        return !_semanticMap.empty();
     }
 
     std::optional<SemanticInfo> SemanticParser::getSemanticInfo(const std::string& meshHashId) const {
         auto it = _semanticMap.find(meshHashId);
-        if (it != _semanticMap.end()) {
-            return it->second;
-        }
+        if (it != _semanticMap.end()) return it->second;
         return std::nullopt;
+    }
+
+    std::optional<SemanticInfo> SemanticParser::getSemanticInfo(const std::string& glbStem, const std::string& meshHashId) const {
+        if (!glbStem.empty()) {
+            std::string key = glbStem + "|" + meshHashId;
+            auto it = _semanticMap.find(key);
+            if (it != _semanticMap.end()) return it->second;
+        }
+        return getSemanticInfo(meshHashId);
     }
 
     const std::map<std::string, SemanticInfo>& SemanticParser::getAllSemantics() const {

@@ -12,6 +12,20 @@ instance_limit = 3
 normal_tolerance = 0.1
 allow_non_uniform_scale_instancing = true
 
+# 实例化检测模式: legacy (哈希+包围盒) 或 semantic_hausdorff (语义哈希+豪斯多夫相似度)
+# instancing_detection_mode = legacy
+# instancing_detection_mode = semantic_hausdorff
+
+# semantic_hausdorff 模式专用参数:
+# semantic_hash_fields = category,family,type
+# similarity_thresholds = 0.95,0.90,0.85,0.80,0.75
+# hlod_similarity_threshold = 0.70
+#
+# 语义数据路径：可为单文件或文件夹。若为文件夹，则在其中查找与 input_directory 下 GLB 同名的 .RISCRVT
+# 例如：SZW_HRZB_STR_26F.glb 匹配 semantic_data_path/SZW_HRZB_STR_26F.RISCRVT
+# semantic_data_path = D:/Data/shiyanshuju/Floor26/BatchExport
+# semantic_input_directory = 可选，用于匹配的 GLB 来源目录（默认用 input_directory）
+
 # -----------------------------------------------------------------------------
 # 实验模式配置
 # -----------------------------------------------------------------------------
