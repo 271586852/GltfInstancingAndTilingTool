@@ -62,7 +62,7 @@ experiments/
 
 ### 2. 标准化CSV格式
 
-**instancing_analysis.csv**
+**instancing.csv**（位于 `01_instancing/analysis/`）
 ```csv
 Metric,Value,Unit
 Input Models,1,count
@@ -71,7 +71,7 @@ Node Reduction (%),81.18,%
 File Size Reduction (%),91.77,%
 ```
 
-**lod_analysis.csv**
+**instance_lod.csv**（位于 `02_instance_lod/analysis/`）
 ```csv
 LOD Level,Original (Input),Instanced (LOD5),LOD4 (Variant),LOD3 (Class),LOD2 (Abstract),LOD1 (Proxy)
 File Size (MB),46.78,3.85,3.85,0.12,0.12,0.01

@@ -50,7 +50,7 @@
         <mxCell id="16" value="③ simplify 0.5" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="10">
           <mxGeometry x="270" y="190" width="100" height="30" as="geometry"/>
         </mxCell>
-        <mxCell id="17" value="④ detectInstancing" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="10">
+        <mxCell id="17" value="④ SemanticMaterialGeometricDetector (Hausdorff)" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="10">
           <mxGeometry x="380" y="190" width="120" height="30" as="geometry"/>
         </mxCell>
         <mxCell id="18" value="" style="endArrow=classic;html=1;" edge="1" parent="10" source="11" target="12">

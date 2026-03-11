@@ -31,19 +31,19 @@
 
 ### 实验变量
 
-| 策略名称 | Tolerance (m) | Instance Limit | Normal Tolerance | 说明 |
-|----------|---------------|----------------|------------------|------|
-| **Strict** | 0.00 (精确) | 5 | 0.00 | 基线对照组 - 完全几何匹配 |
-| **Moderate** | 0.05 (中等) | 3 | 0.10 | 允许5cm几何偏差 |
-| **Lenient** | 0.10 (宽松) | 2 | 0.10 | 允许10cm几何偏差 |
+| 策略名称 | Similarity Threshold | Instance Limit | 说明 |
+|----------|---------------------|----------------|------|
+| **Strict** | 0.99 (严格) | 5 | 基线对照组 - 高相似度才合并 |
+| **Moderate** | 0.95 (中等) | 3 | 允许轻微几何差异 |
+| **Lenient** | 0.90 (宽松) | 2 | 允许较大几何差异 |
 
 ### 测量指标
 
 | 指标类别 | 具体指标 | 数据来源 |
 |----------|----------|----------|
-| **压缩性能** | 文件大小缩减率 (%) | `instancing_analysis.csv` |
-| | 节点减少百分比 (%) | `instancing_analysis.csv` |
-| | 实例化率 (%) | `instancing_analysis.csv` |
+| **压缩性能** | 文件大小缩减率 (%) | `01_instancing/analysis/instancing.csv` |
+| | 节点减少百分比 (%) | `01_instancing/analysis/instancing.csv` |
+| | 实例化率 (%) | `01_instancing/analysis/instancing.csv` |
 | **渲染性能** | Draw Calls减少数 | 计算: Initial Meshes - Final Meshes |
 | | GPU内存占用 | 运行时测量 |
 | **视觉质量** | 几何误差 (Hausdorff距离) | 需新增计算 |
@@ -56,7 +56,7 @@
 2. FOR each 数据集:
 3.   FOR each 策略 (Strict/Moderate/Lenient):
 4.     运行工具生成实例化GLB
-5.     记录 instancing_analysis.csv
+5.     记录 01_instancing/analysis/instancing.csv
 6.     渲染截图用于视觉质量评估
 7.   END FOR
 8. END FOR
@@ -86,9 +86,9 @@
 
 | 指标 | 说明 | 数据来源 |
 |------|------|----------|
-| 文件大小 (MB) | 每层级GLB大小 | `lod_analysis.csv` |
-| 顶点数缩减率 (%) | (原始-当前)/原始 | `lod_analysis.csv` |
-| 唯一Mesh数 | 聚合后的Mesh种类 | `lod_analysis.csv` |
+| 文件大小 (MB) | 每层级GLB大小 | `02_instance_lod/analysis/instance_lod.csv` |
+| 顶点数缩减率 (%) | (原始-当前)/原始 | `02_instance_lod/analysis/instance_lod.csv` |
+| 唯一Mesh数 | 聚合后的Mesh种类 | `02_instance_lod/analysis/instance_lod.csv` |
 | 几何误差 | 与原始模型的偏差 | 需新增计算 |
 
 #### 2.2 实例化LOD vs 非实例化LOD 对比
@@ -103,8 +103,8 @@
 
 | 指标 | 实例化LOD | 非实例化LOD |
 |------|-----------|-------------|
-| 文件大小缩减率 | `lod_analysis.csv` | `non_instanced_lod_report.csv` |
-| 三角形缩减率 | `lod_analysis.csv` | `non_instanced_lod_report.csv` |
+| 文件大小缩减率 | `02_instance_lod/analysis/instance_lod.csv` | `02_non_instance_lod/analysis/non_instance_lod_analysis.csv` |
+| 三角形缩减率 | `02_instance_lod/analysis/instance_lod.csv` | `02_non_instance_lod/analysis/non_instance_lod_analysis.csv` |
 | 渲染Batch数 | 计算 | 计算 |
 | LOD切换平滑度 | 视觉评估 | 视觉评估 |
 
@@ -147,7 +147,7 @@
 
 | 指标类别 | 具体指标 | 数据来源 |
 |----------|----------|----------|
-| **空间效率** | 总瓦片数 | `hlod_analysis.csv` |
+| **空间效率** | 总瓦片数 | `03_hlod/hlod_analysis.csv` |
 | | 平均每瓦片对象数 | 计算 |
 | | 瓦片大小均衡性 (CV) | 计算变异系数 |
 | **渲染性能** | 视锥裁剪效率 | 运行时测量 |
@@ -161,7 +161,7 @@
 2. FOR each Max Depth (4, 6, 8):
 3.   FOR each Max Objects/Tile (30, 50, 100):
 4.     生成四叉树HLOD
-5.     记录 hlod_analysis.csv
+5.     记录 03_hlod/hlod_analysis.csv
 6.     模拟相机飞行路径测量渲染性能
 7.   END FOR
 8. END FOR
@@ -506,10 +506,10 @@
 
 | 文件路径 | 包含数据 | 适用实验 |
 |----------|----------|----------|
-| `instancing_analysis.csv` | 实例化前后对比指标 | 实验1,4 |
-| `lod_analysis.csv` | 5级实例化LOD指标 | 实验2,4 |
-| `non_instanced_lod_report.csv` | 非实例化LOD指标 | 实验2 |
-| `hlod_analysis.csv` | 四叉树HLOD指标 | 实验3,6 |
+| `01_instancing/analysis/instancing.csv` | 实例化前后对比指标 | 实验1,4 |
+| `02_instance_lod/analysis/instance_lod.csv` | 5级实例化LOD指标 | 实验2,4 |
+| `02_non_instance_lod/analysis/non_instance_lod_analysis.csv` | 非实例化LOD指标 | 实验2 |
+| `03_hlod/hlod_analysis.csv` | 四叉树HLOD指标 | 实验3,6 |
 | `cross_glb_hlod_analysis.csv` | 跨GLB HLOD对比指标 | 实验6 |
 | `*_results.csv` | 详细分组信息 | 深入分析 |
 

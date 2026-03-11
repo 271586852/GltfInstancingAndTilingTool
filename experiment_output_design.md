@@ -21,7 +21,7 @@ experiments/                                      # 实验根目录
 │   │
 │   ├── dataset_住宅标准层/                        # 数据集1结果
 │   │   ├── README.md                             # 数据集说明
-│   │   ├── 01_Strict_0.00m/                      # 策略1：严格匹配
+│   │   ├── 01_Strict_0.99/                       # 策略1：严格相似度（similarity_threshold=0.99）
 │   │   │   ├── config.json                       # 完整配置参数
 │   │   │   ├── output.glb                        # 输出模型
 │   │   │   ├── tileset.json                      # 3D Tiles文件
@@ -31,7 +31,7 @@ experiments/                                      # 实验根目录
 │   │   │       ├── overview.png
 │   │   │       └── detail.png
 │   │   │
-│   │   ├── 02_Moderate_0.05m/                    # 策略2：中等容差
+│   │   ├── 02_Moderate_0.95/                     # 策略2：中等相似度（similarity_threshold=0.95）
 │   │   │   ├── config.json
 │   │   │   ├── output.glb
 │   │   │   ├── tileset.json
@@ -39,7 +39,7 @@ experiments/                                      # 实验根目录
 │   │   │   ├── instancing_analysis.csv
 │   │   │   └── screenshots/
 │   │   │
-│   │   ├── 03_Lenient_0.10m/                     # 策略3：宽松容差
+│   │   ├── 03_Lenient_0.90/                      # 策略3：宽松相似度（similarity_threshold=0.90）
 │   │   │   ├── config.json
 │   │   │   ├── output.glb
 │   │   │   ├── tileset.json

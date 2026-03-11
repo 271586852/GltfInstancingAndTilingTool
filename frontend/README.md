@@ -1,69 +1,37 @@
-# React + TypeScript + Vite
+# GltfInstancingAndTilingTool 前端
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+本目录为 GltfInstancingAndTilingTool 的 Web 前端，基于 React + TypeScript + Vite 构建，用于与 C++ 核心工具配合，提供模型上传、参数配置与 CesiumJS 三维可视化展示。
 
-Currently, two official plugins are available:
+## 架构
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **C++ 核心**：项目根目录下的 C++ 工具，负责 GLB 实例化检测、LOD 生成、HLOD 构建等。
+- **Node.js 后端**：调用 C++ 可执行文件，接收上传的 GLB，返回处理后的 `tileset.json` 及瓦片。
+- **本前端**：React + CesiumJS，提供上传界面、参数配置，并加载 3D Tiles 进行渲染。
 
-## Expanding the ESLint configuration
+## 与 C++ 后端的接口对应
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+C++ 工具支持配置文件与命令行参数，主要参数包括：
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- `input_directory`：输入 GLB 目录
+- `output_directory`：输出目录
+- `similarity_thresholds`：相似度阈值（如 0.95,0.90,0.85,0.80,0.75）
+- `semantic_hash_fields`：语义分组字段（category,family,type）
+- `hausdorff_max_sample_points`：点云采样上限
+- `instance_limit`：最小实例数
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+后端通过 `child_process` 调用 C++ 可执行文件，传入上述参数，输出 `01_instancing/instanced.glb`、`non_instanced.glb`、`tileset.json` 等。
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 开发
+
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 构建
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
 ```
+
+详见 [流程.md](流程.md) 了解完整集成流程。

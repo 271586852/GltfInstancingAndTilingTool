@@ -39,7 +39,7 @@ enable_experiment_mode = true
 experiment_dataset_name = 住宅标准层
 
 # 策略ID（标识当前运行配置）
-experiment_strategy_id = 02_Moderate_0.05m
+experiment_strategy_id = 02_Moderate_0.95
 ```
 
 ---
@@ -205,12 +205,12 @@ output_directory/experiments/         # 实验输出在 output_directory 内
 
 | 文件 | 说明 | 适用场景 |
 |------|------|----------|
-| `instancing_analysis.csv` | 实例化分析指标 | 所有实验 |
-| `instancing_analysis.txt` | 详细文字报告 | 调试分析 |
-| `*_results.csv` | 详细分组信息 | 深入研究 |
-| `instance_lod_analysis.csv` | Instance LOD 5级指标 | 实验2,4 |
-| `non_instance_lod_analysis.csv` | Non-Instance LOD 指标 | 实验2 |
-| `hlod_analysis.csv` | HLOD指标 | 实验3,6 |
+| `01_instancing/analysis/instancing.csv` | 实例化分析指标 | 所有实验 |
+| `01_instancing/analysis/instancing.txt` | 详细文字报告 | 调试分析 |
+| `_analysis/*_results.csv` | 详细分组信息 | 深入研究 |
+| `02_instance_lod/analysis/instance_lod.csv` | Instance LOD 5级指标 | 实验2,4 |
+| `02_non_instance_lod/analysis/non_instance_lod_analysis.csv` | Non-Instance LOD 指标 | 实验2 |
+| `03_hlod/hlod_analysis.csv` | HLOD指标 | 实验3,6 |
 
 ### 4.2 实验模式新增文件
 
@@ -221,6 +221,16 @@ output_directory/experiments/         # 实验输出在 output_directory 内
 | `metrics_comparison.csv` | 多策略对比 | 论文数据 |
 | `comparison_report.txt` | 自动对比报告 | 分析结论 |
 | `strategy_recommendation.md` | 策略推荐（实验6） | 工程指导 |
+
+### 4.3 instancing.csv 列说明（01_instancing/analysis/）
+
+| 列名 | 说明 |
+|------|------|
+| Metric | 指标名称（如 Input Models, Initial Nodes, Node Reduction (%)） |
+| Value | 数值 |
+| Unit | 单位（count, %, MB 等） |
+
+常见指标：Input Models、Initial Nodes、Final Nodes、Node Reduction (%)、File Size Reduction (%)、Instanced Groups、Non-instanced Meshes、Final Instances 等。
 
 ---
 
@@ -282,8 +292,8 @@ input_directory = D:/Data/BIM
 output_directory = D:/Output/Results
 enable_experiment_mode = true
 experiment_dataset_name = 住宅标准层
-experiment_strategy_id = 02_Moderate_0.05m
-tolerance = 0.05
+experiment_strategy_id = 02_Moderate_0.95
+similarity_thresholds = 0.95,0.90,0.85,0.80,0.75
 instance_limit = 3
 ```
 
@@ -295,7 +305,7 @@ D:/Output/Results/
 └── experiments/                          # 实验目录
     └── 01_InstancingStrategy/
         └── dataset_住宅标准层/
-            ├── 02_Moderate_0.05m/
+            ├── 02_Moderate_0.95/
             │   ├── config.json
             │   ├── instancing_analysis.csv
             │   └── README.md
@@ -360,7 +370,7 @@ D:/Output/Results/
 |----------|------|
 | 原始分析数据 | `output_directory/01_instancing/analysis/instancing.csv` |
 | 实验对比数据 | `experiments/01_InstancingStrategy/dataset_xxx/comparison/` |
-| 可复现配置 | `experiments/01_InstancingStrategy/dataset_xxx/02_Moderate/config.json` |
+| 可复现配置 | `experiments/01_InstancingStrategy/dataset_xxx/02_Moderate_0.95/config.json` |
 | 论文图表数据 | `experiments/01_InstancingStrategy/dataset_xxx/comparison/charts/` |
 | 实验结论 | `experiments/_summary/final_conclusion.md` |
 

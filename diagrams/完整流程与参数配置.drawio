@@ -32,19 +32,19 @@
         <mxCell id="stage1Params" value="Stage 1 实例化参数&#xa;(主流程)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1" vertex="1" parent="1">
           <mxGeometry x="300" y="70" width="200" height="180" as="geometry"/>
         </mxCell>
-        <mxCell id="p1a" value="geometryTolerance (--tolerance)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
+        <mxCell id="p1a" value="similarity_thresholds" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
           <mxGeometry x="10" y="35" width="180" height="22" as="geometry"/>
         </mxCell>
-        <mxCell id="p1b" value="normalTolerance (--normal-tolerance)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
+        <mxCell id="p1b" value="semantic_hash_fields" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
           <mxGeometry x="10" y="60" width="180" height="22" as="geometry"/>
         </mxCell>
-        <mxCell id="p1c" value="instanceLimit (--instance-limit)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
+        <mxCell id="p1c" value="hausdorff_max_sample_points" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
           <mxGeometry x="10" y="85" width="180" height="22" as="geometry"/>
         </mxCell>
-        <mxCell id="p1d" value="attributesToSkipDataHash" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
+        <mxCell id="p1d" value="material_filter_mode" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
           <mxGeometry x="10" y="110" width="180" height="22" as="geometry"/>
         </mxCell>
-        <mxCell id="p1e" value="allowNonUniformScaleInstancing" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
+        <mxCell id="p1e" value="instanceLimit (--instance-limit)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
           <mxGeometry x="10" y="135" width="180" height="22" as="geometry"/>
         </mxCell>
         <mxCell id="p1f" value="mergeAllGlb" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
@@ -55,16 +55,16 @@
         <mxCell id="hlodParams" value="HLOD 实例化参数&#xa;(未设置则用 Stage 1)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1" vertex="1" parent="1">
           <mxGeometry x="540" y="70" width="220" height="180" as="geometry"/>
         </mxCell>
-        <mxCell id="hp1" value="hlodGeometryTolerance (--hlod-tolerance)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
+        <mxCell id="hp1" value="hlod_similarity_threshold" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
           <mxGeometry x="10" y="35" width="200" height="22" as="geometry"/>
         </mxCell>
-        <mxCell id="hp2" value="hlodNormalTolerance (--hlod-normal-tolerance)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
+        <mxCell id="hp2" value="hlodInstanceLimit (--hlod-instance-limit)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
           <mxGeometry x="10" y="60" width="200" height="22" as="geometry"/>
         </mxCell>
-        <mxCell id="hp3" value="hlodInstanceLimit (--hlod-instance-limit)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
+        <mxCell id="hp3" value="hausdorff_max_sample_points" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
           <mxGeometry x="10" y="85" width="200" height="22" as="geometry"/>
         </mxCell>
-        <mxCell id="hp4" value="hlodAttributesToSkipDataHash" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
+        <mxCell id="hp4" value="material_filter_mode" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
           <mxGeometry x="10" y="110" width="200" height="22" as="geometry"/>
         </mxCell>
         <mxCell id="hp5" value="hlodAllowNonUniformScaleInstancing" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="hlodParams">
@@ -78,7 +78,7 @@
         <mxCell id="s1a" value="GlbReader 发现与加载" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="stage1">
           <mxGeometry x="20" y="40" width="130" height="35" as="geometry"/>
         </mxCell>
-        <mxCell id="s1b" value="InstancingDetector&#xa;Stage 1 参数" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="stage1">
+        <mxCell id="s1b" value="SemanticMaterialGeometricDetector&#xa;Stage 1 参数" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="stage1">
           <mxGeometry x="170" y="40" width="130" height="35" as="geometry"/>
         </mxCell>
         <mxCell id="s1c" value="GlbWriter 输出" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="stage1">
@@ -87,7 +87,7 @@
         <mxCell id="s1d" value="TilesetWriter" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="stage1">
           <mxGeometry x="170" y="90" width="130" height="35" as="geometry"/>
         </mxCell>
-        <mxCell id="s1out" value="输出: instanced_meshes.glb&#xa;non_instanced_meshes.glb&#xa;tileset_instanced.json, tileset_non_instanced.json&#xa;instancing_analysis.csv (SO,SC,CR,Eo,Ec,ECR,EIc,IR,Ic,PIC)&#xa;instancing_per_glb.csv, instancing_optimization_summary.txt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacingLeft=5;fontSize=9;" vertex="1" parent="stage1">
+        <mxCell id="s1out" value="输出: instanced.glb&#xa;non_instanced.glb&#xa;instanced.json, non_instanced.json&#xa;01_instancing/analysis/instancing.csv&#xa;instancing.txt, per_glb.csv, optimization_summary.txt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacingLeft=5;fontSize=9;" vertex="1" parent="stage1">
           <mxGeometry x="20" y="135" width="280" height="70" as="geometry"/>
         </mxCell>
         <mxCell id="e_s1a" style="endArrow=classic;html=1;" edge="1" parent="stage1" source="s1a" target="s1b">

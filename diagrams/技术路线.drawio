@@ -14,8 +14,8 @@
         <mxCell id="4" value="GlbReader&#xa;发现与加载" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
           <mxGeometry x="280" y="80" width="120" height="50" as="geometry"/>
         </mxCell>
-        <mxCell id="5" value="InstancingDetector&#xa;实例化检测" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
-          <mxGeometry x="460" y="80" width="140" height="50" as="geometry"/>
+        <mxCell id="5" value="SemanticMaterialGeometricDetector&#xa;语义分组 + Hausdorff 相似度" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="440" y="80" width="180" height="50" as="geometry"/>
         </mxCell>
         <mxCell id="6" value="GlbWriter&#xa;输出 GLB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
           <mxGeometry x="660" y="80" width="120" height="50" as="geometry"/>
@@ -48,6 +48,9 @@
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
         <mxCell id="16" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="3" target="8">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="21" value="语义" style="endArrow=classic;html=1;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="8" target="5">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
         <mxCell id="17" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="5" target="9">

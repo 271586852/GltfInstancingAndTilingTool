@@ -3,7 +3,7 @@
 **`GlbWriter` 模块的整体目标和流程**
 
 **目标**：
-`GlbWriter` 的核心目标是接收一组原始的 glTF 模型（由 `GlbReader` 加载）和一份实例化检测结果（由 `InstancingDetector` 生成），然后基于这些信息创建一个新的、优化后的 GLB 文件。这个新的 GLB 文件应该：
+`GlbWriter` 的核心目标是接收一组原始的 glTF 模型（由 `GlbReader` 加载）和一份实例化检测结果（由 `SemanticMaterialGeometricDetector::detect()` 生成），然后基于这些信息创建一个新的、优化后的 GLB 文件。这个新的 GLB 文件应该：
 1.  包含所有原始模型中出现过的唯一几何形状 (Mesh) 和材质 (Material)，但每个只包含一份。
 2.  对于那些在原始模型中多次出现、且几何和材质相同的 Mesh，在新 GLB 中使用 `EXT_mesh_gpu_instancing` 扩展来高效地渲染它们的多个实例，每个实例可以有不同的变换 (Translation, Rotation, Scale - TRS)。
 3.  对于那些只出现一次，或者因为某些原因不适合实例化的 Mesh，则作为普通的、非实例化的 Mesh 包含在新 GLB 中，并应用其原始的变换。
@@ -23,7 +23,7 @@
     *   **目的**：避免在新的 GLB 文件中重复存储相同的材质、纹理等资源。如果多个原始 Mesh 共享同一个材质，在新 GLB 中，这个材质只需要被复制一次，所有引用它的新 Mesh Primitive 都将指向这个新的、唯一的材质副本。
 
 3.  **处理实例化组 (`detectionResult.instancedGroups`)**:
-    *   遍历由 `InstancingDetector` 识别出的每一个可实例化组 (`InstancedMeshGroup`)。
+    *   遍历由 `SemanticMaterialGeometricDetector` 识别出的每一个可实例化组 (`InstancedMeshGroup`)。
     *   对于每个组：
         *   获取该组的代表性 Mesh 来自的原始 `CesiumGltf::Model` 对象 (通过 `getOriginalModelById`)。
         *   **复制代表性 Mesh 定义 (`copyMeshDefinition`)**: 将这个代表性 Mesh 的完整定义（包括其所有 `MeshPrimitive`，以及这些 Primitive 引用的 `Accessor`、`BufferView` 和 `Material`）从原始模型复制到新的 `_outputGltf` 模型中。
@@ -37,7 +37,7 @@
         *   **更新总包围盒**: 获取复制的代表性 Mesh 的局部包围盒，然后对该组中的每一个实例，将此局部包围盒应用实例的变换，并将变换后的包围盒合并到 `overallBoundingBox` 中。
 
 4.  **处理非实例化 Mesh (`detectionResult.nonInstancedMeshes`)**:
-    *   遍历由 `InstancingDetector` 识别出的每一个非实例化 Mesh (`NonInstancedMeshInfo`)。
+    *   遍历由 `SemanticMaterialGeometricDetector` 识别出的每一个非实例化 Mesh (`NonInstancedMeshInfo`)。
     *   对于每个非实例化 Mesh：
         *   获取其原始 `CesiumGltf::Model` 对象。
         *   **复制 Mesh 定义 (`copyMeshDefinition`)**: 与实例化组类似，将其 Mesh 定义复制到 `_outputGltf`，数据写入 `_outputBufferData`。
