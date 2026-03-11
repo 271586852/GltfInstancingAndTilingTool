@@ -4,7 +4,7 @@
 #include "utilities.h" // For BoundingBox, MeshInstanceInfo, etc.
 #include "semantic_parser.h"
 #include "glb_reader.h" // For LoadedGltfModel
-#include "instancing_detector.h" // For InstancingDetectionResult
+#include "instancing_result.h" // For InstancingDetectionResult
 
 #include <vector>
 #include <map>

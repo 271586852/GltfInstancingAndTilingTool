@@ -3,7 +3,7 @@
 
 #include "utilities.h"
 #include "glb_reader.h"
-#include "instancing_detector.h"  // InstancingDetectionResult
+#include "instancing_result.h"  // InstancingDetectionResult
 #include "semantic_parser.h"
 #include "hausdorff_similarity.h"
 #include <vector>

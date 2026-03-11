@@ -8,7 +8,7 @@
 #include <map>
 #include <glm/glm.hpp>
 #include <CesiumGltf/Model.h>
-#include "instancing_detector.h" // Needed for GltfInstancing::InstancingDetectionResult
+#include "instancing_result.h" // Needed for GltfInstancing::InstancingDetectionResult
 
 struct ToolConfiguration; // Forward declaration
 

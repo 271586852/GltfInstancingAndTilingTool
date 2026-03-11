@@ -1,6 +1,6 @@
 #include "experiment6_runner.h"
 #include "glb_reader.h"
-#include "instancing_detector.h"
+#include "instancing_result.h"
 #include "semantic_hausdorff_detector.h"
 #include "glb_writer.h"
 #include "tileset_writer.h"
@@ -460,32 +460,20 @@ void processSingleGlbFullPipeline(
         return;
     }
 
-    // Detect instancing
+    // Detect instancing (legacy bbox logic removed; semantic_hausdorff only)
     GltfInstancing::InstancingDetectionResult detectionResult;
     {
-        std::string mode = baseConfig.instancingDetectionMode;
-        std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
-        if (mode == "semantic_hausdorff") {
-            GltfInstancing::SemanticParser semanticParser;
-            if (!baseConfig.semanticDataPath.empty() && std::filesystem::exists(baseConfig.semanticDataPath)) {
-                if (std::filesystem::is_directory(baseConfig.semanticDataPath))
-                    semanticParser.parseFromFolder(baseConfig.semanticDataPath, { glbPath });
-                else
-                    semanticParser.parse(baseConfig.semanticDataPath);
-            }
-            double thresh = baseConfig.similarityThresholdsParsed.empty() ? 0.95 : baseConfig.similarityThresholdsParsed[0];
-            GltfInstancing::SemanticHausdorffInstancingDetector detector(
-                &semanticParser, baseConfig.semanticHashFields, thresh, baseConfig.instanceLimit);
-            detectionResult = detector.detect(loadedModels);
-        } else {
-            GltfInstancing::InstancingDetector detector(
-                baseConfig.geometryTolerance,
-                baseConfig.attributesToSkipDataHash,
-                baseConfig.normalTolerance,
-                baseConfig.instanceLimit,
-                baseConfig.allowNonUniformScaleInstancing);
-            detectionResult = detector.detect(loadedModels);
+        GltfInstancing::SemanticParser semanticParser;
+        if (!baseConfig.semanticDataPath.empty() && std::filesystem::exists(baseConfig.semanticDataPath)) {
+            if (std::filesystem::is_directory(baseConfig.semanticDataPath))
+                semanticParser.parseFromFolder(baseConfig.semanticDataPath, { glbPath });
+            else
+                semanticParser.parse(baseConfig.semanticDataPath);
         }
+        double thresh = baseConfig.similarityThresholdsParsed.empty() ? 0.95 : baseConfig.similarityThresholdsParsed[0];
+        GltfInstancing::SemanticHausdorffInstancingDetector detector(
+            &semanticParser, baseConfig.semanticHashFields, thresh, baseConfig.instanceLimit, baseConfig.hausdorffMaxSamplePoints);
+        detectionResult = detector.detect(loadedModels);
     }
 
     // Write instanced and non-instanced GLBs
@@ -654,31 +642,20 @@ void runExperiment6(
         if (!allLoadedModels.empty()) {
             GltfInstancing::InstancingDetectionResult detectionResult;
             {
-                std::string mode = config.instancingDetectionMode;
-                std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
-                if (mode == "semantic_hausdorff") {
-                    GltfInstancing::SemanticParser semanticParser;
-                    if (!config.semanticDataPath.empty() && std::filesystem::exists(config.semanticDataPath)) {
-                        if (std::filesystem::is_directory(config.semanticDataPath)) {
-                            std::set<std::filesystem::path> glbSet(inputGlbs.begin(), inputGlbs.end());
-                            semanticParser.parseFromFolder(config.semanticDataPath, glbSet);
-                        } else {
-                            semanticParser.parse(config.semanticDataPath);
-                        }
+                // legacy bbox logic removed; semantic_hausdorff only
+                GltfInstancing::SemanticParser semanticParser;
+                if (!config.semanticDataPath.empty() && std::filesystem::exists(config.semanticDataPath)) {
+                    if (std::filesystem::is_directory(config.semanticDataPath)) {
+                        std::set<std::filesystem::path> glbSet(inputGlbs.begin(), inputGlbs.end());
+                        semanticParser.parseFromFolder(config.semanticDataPath, glbSet);
+                    } else {
+                        semanticParser.parse(config.semanticDataPath);
                     }
-                    double thresh = config.similarityThresholdsParsed.empty() ? 0.95 : config.similarityThresholdsParsed[0];
-                    GltfInstancing::SemanticHausdorffInstancingDetector detector(
-                        &semanticParser, config.semanticHashFields, thresh, config.instanceLimit);
-                    detectionResult = detector.detect(allLoadedModels);
-                } else {
-                    GltfInstancing::InstancingDetector detector(
-                        config.geometryTolerance,
-                        config.attributesToSkipDataHash,
-                        config.normalTolerance,
-                        config.instanceLimit,
-                        config.allowNonUniformScaleInstancing);
-                    detectionResult = detector.detect(allLoadedModels);
                 }
+                double thresh = config.similarityThresholdsParsed.empty() ? 0.95 : config.similarityThresholdsParsed[0];
+                GltfInstancing::SemanticHausdorffInstancingDetector detector(
+                    &semanticParser, config.semanticHashFields, thresh, config.instanceLimit, config.hausdorffMaxSamplePoints);
+                detectionResult = detector.detect(allLoadedModels);
             }
 
             // Write instanced/non-instanced GLBs

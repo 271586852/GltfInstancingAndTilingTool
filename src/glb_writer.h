@@ -1,8 +1,8 @@
-﻿#ifndef GLB_WRITER_H
+#ifndef GLB_WRITER_H
 #define GLB_WRITER_H
 
 #include "utilities.h"
-#include "instancing_detector.h" // For InstancingDetectionResult and related structs
+#include "instancing_result.h" // For InstancingDetectionResult
 #include "glb_reader.h"         // For LoadedGltfModel (to access original model data)
 #include "instancingLOD_manager.h"        // For LODLevelResult
 
