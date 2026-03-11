@@ -25,11 +25,13 @@ namespace GltfInstancing {
         const std::string& semanticHashFields,
         double similarityThreshold,
         int instanceLimit,
-        size_t hausdorffMaxSamplePoints)
+        size_t hausdorffMaxSamplePoints,
+        bool allowUnknownCrossMeshClustering)
         : _semanticParser(semanticParser)
         , _similarityThreshold(std::max(0.0, std::min(1.0, similarityThreshold)))
         , _instanceLimit(instanceLimit > 0 ? instanceLimit : 2)
         , _hausdorffMaxSamplePoints(hausdorffMaxSamplePoints)
+        , _allowUnknownCrossMeshClustering(allowUnknownCrossMeshClustering)
     {
         _semanticHashFieldNames = splitAndTrim(semanticHashFields, ',');
         if (_semanticHashFieldNames.empty()) {
@@ -178,6 +180,7 @@ namespace GltfInstancing {
                 GltfInstancing::logInfo("[Hausdorff] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + " (无实例, 跳过).");
                 continue;
             }
+            const bool unknownNoCrossMesh = (semanticKey == "unknown" && !_allowUnknownCrossMeshClustering);
 
             GltfInstancing::logInfo("[Hausdorff] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups)
                 + " (本组 " + std::to_string(instances.size()) + " 个实例)...");
@@ -201,7 +204,7 @@ namespace GltfInstancing {
                 size_t clusterIdx = clusterInstances.size();
                 bool found = false;
 
-                for (size_t r = 0; r < representatives.size(); ++r) {
+                if (!unknownNoCrossMesh) for (size_t r = 0; r < representatives.size(); ++r) {
                     auto [repModelId, repMesh] = representatives[r];
                     const LoadedGltfModel* rm = nullptr;
                     for (const auto& m : loadedModels)

@@ -820,7 +820,8 @@ namespace QuadtreePipeline {
                 _config.semanticHashFields,
                 _config.hlodSimilarityThreshold,
                 hlodInstanceLimit,
-                _config.hausdorffMaxSamplePoints);
+                _config.hausdorffMaxSamplePoints,
+                _config.allowUnknownCrossMeshClustering);
             result = detector.detect(models);
         }
         

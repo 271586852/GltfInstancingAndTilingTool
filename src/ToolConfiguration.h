@@ -30,6 +30,8 @@ struct ToolConfiguration {
     double hlodSimilarityThreshold = 0.70;
     // Limit point cloud size for Hausdorff computation (0 disables sampling).
     size_t hausdorffMaxSamplePoints = 2000;
+    // If false, semantic key "unknown" will NOT do cross-mesh clustering.
+    bool allowUnknownCrossMeshClustering = false;
 
     // --- Instance LOD (Instancing LOD) Configuration ---
     bool enableInstanceLodGeneration = false;

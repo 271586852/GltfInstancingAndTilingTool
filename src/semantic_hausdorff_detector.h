@@ -26,7 +26,8 @@ namespace GltfInstancing {
             const std::string& semanticHashFields,
             double similarityThreshold,
             int instanceLimit,
-            size_t hausdorffMaxSamplePoints = 2000);
+            size_t hausdorffMaxSamplePoints = 2000,
+            bool allowUnknownCrossMeshClustering = false);
 
         InstancingDetectionResult detect(const std::vector<LoadedGltfModel>& loadedModels);
 
@@ -36,6 +37,7 @@ namespace GltfInstancing {
         double _similarityThreshold;
         int _instanceLimit;
         size_t _hausdorffMaxSamplePoints;
+        bool _allowUnknownCrossMeshClustering;
 
         std::string buildSemanticHashKey(const std::optional<SemanticInfo>& info) const;
         void traverseNode(

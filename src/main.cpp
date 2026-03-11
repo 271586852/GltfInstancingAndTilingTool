@@ -270,6 +270,15 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 } catch (const std::exception& e) {
                     GltfInstancing::logWarning("Invalid value for 'hausdorff_max_sample_points' in config file (line " + std::to_string(lineNumber) + "): " + value + ". Error: " + e.what());
                 }
+            } else if (key == "allow_unknown_cross_mesh_clustering") {
+                std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+                if (value == "true" || value == "1" || value == "yes") {
+                    config.allowUnknownCrossMeshClustering = true;
+                } else if (value == "false" || value == "0" || value == "no") {
+                    config.allowUnknownCrossMeshClustering = false;
+                } else {
+                    GltfInstancing::logWarning("Invalid boolean value for 'allow_unknown_cross_mesh_clustering' in config file (line " + std::to_string(lineNumber) + "): " + value);
+                }
             } else if (key == "mesh_segmentation") {
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") {
@@ -445,6 +454,7 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("  --instance-limit <value>:            Minimum number of instances to form a group. Default: 2.");
     GltfInstancing::logInfo("  --instancing-detection-mode <mode>:  'semantic_hausdorff' only (legacy bbox logic removed). Default: semantic_hausdorff.");
     GltfInstancing::logInfo("  --hausdorff-max-sample-points <n>:   Max points per mesh for Hausdorff (semantic_hausdorff). 0 disables sampling. Default: 2000.");
+    GltfInstancing::logInfo("  --allow-unknown-cross-mesh-clustering: Allow semantic 'unknown' to cluster across different meshes. Default: false.");
     GltfInstancing::logInfo("  --mesh-segmentation:                 Export each mesh as a separate GLB file. Default: false.");
     GltfInstancing::logInfo("  --csv-dir <path>:                    Path to directory with CSV files for post-processing.");
     GltfInstancing::logInfo("  --enable-quadtree:                   Enable Quadtree HLOD pipeline. Default: false.");
@@ -1414,6 +1424,10 @@ int main(int argc, char* argv[]) {
                 GltfInstancing::logError("--hausdorff-max-sample-points option (CLI) requires a value."); printUsage(argv[0]); return 1;
             }
         }
+        else if (arg == "--allow-unknown-cross-mesh-clustering") {
+            config.allowUnknownCrossMeshClustering = true;
+            GltfInstancing::logDebug("Command-line override: unknown semantic groups can cross-mesh cluster.");
+        }
         else if (arg == "--mesh-segmentation") {
             config.meshSegmentation = true;
             config.meshSegmentationSet = true;
@@ -1801,7 +1815,7 @@ int main(int argc, char* argv[]) {
         }
         double threshold = config.similarityThresholdsParsed.empty() ? 0.95 : config.similarityThresholdsParsed[0];
         GltfInstancing::SemanticHausdorffInstancingDetector detector(
-            &semanticParser, config.semanticHashFields, threshold, config.instanceLimit, config.hausdorffMaxSamplePoints);
+            &semanticParser, config.semanticHashFields, threshold, config.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering);
         detectionResult = detector.detect(loadedModels);
     }
     GltfInstancing::logInfo("Stage 1: Instancing detection finished. Generating optimization analysis outputs...");
@@ -2042,7 +2056,7 @@ int main(int argc, char* argv[]) {
                         double thresh = (levelInfo.level < static_cast<int>(config.similarityThresholdsParsed.size()))
                             ? config.similarityThresholdsParsed[levelInfo.level] : config.hlodSimilarityThreshold;
                         GltfInstancing::SemanticHausdorffInstancingDetector lodDetector(
-                            &lodSemanticParser, config.semanticHashFields, thresh, hlodParams.instanceLimit, config.hausdorffMaxSamplePoints);
+                            &lodSemanticParser, config.semanticHashFields, thresh, hlodParams.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering);
                         lodDetectionResult = lodDetector.detect(lodModels);
                     }
 
