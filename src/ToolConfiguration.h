@@ -32,6 +32,8 @@ struct ToolConfiguration {
     size_t hausdorffMaxSamplePoints = 2000;
     // If false, semantic key "unknown" will NOT do cross-mesh clustering.
     bool allowUnknownCrossMeshClustering = false;
+    // Material filter mode for Hausdorff comparison: "none" (no filter), "hash" (same material+texture hash), "index" (same material index)
+    std::string materialFilterMode = "none";
 
     // --- Instance LOD (Instancing LOD) Configuration ---
     bool enableInstanceLodGeneration = false;

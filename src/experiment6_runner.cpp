@@ -472,7 +472,7 @@ void processSingleGlbFullPipeline(
         }
         double thresh = baseConfig.similarityThresholdsParsed.empty() ? 0.95 : baseConfig.similarityThresholdsParsed[0];
         GltfInstancing::SemanticHausdorffInstancingDetector detector(
-            &semanticParser, baseConfig.semanticHashFields, thresh, baseConfig.instanceLimit, baseConfig.hausdorffMaxSamplePoints, baseConfig.allowUnknownCrossMeshClustering);
+            &semanticParser, baseConfig.semanticHashFields, thresh, baseConfig.instanceLimit, baseConfig.hausdorffMaxSamplePoints, baseConfig.allowUnknownCrossMeshClustering, baseConfig.materialFilterMode);
         detectionResult = detector.detect(loadedModels);
     }
 
@@ -654,7 +654,7 @@ void runExperiment6(
                 }
                 double thresh = config.similarityThresholdsParsed.empty() ? 0.95 : config.similarityThresholdsParsed[0];
                 GltfInstancing::SemanticHausdorffInstancingDetector detector(
-                    &semanticParser, config.semanticHashFields, thresh, config.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering);
+                    &semanticParser, config.semanticHashFields, thresh, config.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering, config.materialFilterMode);
                 detectionResult = detector.detect(allLoadedModels);
             }
 

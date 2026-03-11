@@ -26,12 +26,14 @@ namespace GltfInstancing {
         double similarityThreshold,
         int instanceLimit,
         size_t hausdorffMaxSamplePoints,
-        bool allowUnknownCrossMeshClustering)
+        bool allowUnknownCrossMeshClustering,
+        const std::string& materialFilterMode)
         : _semanticParser(semanticParser)
         , _similarityThreshold(std::max(0.0, std::min(1.0, similarityThreshold)))
         , _instanceLimit(instanceLimit > 0 ? instanceLimit : 2)
         , _hausdorffMaxSamplePoints(hausdorffMaxSamplePoints)
         , _allowUnknownCrossMeshClustering(allowUnknownCrossMeshClustering)
+        , _materialFilterMode(materialFilterMode.empty() ? "none" : materialFilterMode)
     {
         _semanticHashFieldNames = splitAndTrim(semanticHashFields, ',');
         if (_semanticHashFieldNames.empty()) {
@@ -216,6 +218,16 @@ namespace GltfInstancing {
                     if (!cm) continue;
                     const CesiumGltf::Mesh& meshCur = cm->model.meshes[inst.originalMeshIndex];
                     const CesiumGltf::Mesh& meshRep = rm->model.meshes[repMesh];
+
+                    // Material filter: skip Hausdorff when materials don't match
+                    if (_materialFilterMode == "hash") {
+                        if (getMeshMaterialHash(cm->model, meshCur) != getMeshMaterialHash(rm->model, meshRep))
+                            continue;
+                    } else if (_materialFilterMode == "index") {
+                        if (getMeshMaterialIndex(cm->model, meshCur) != getMeshMaterialIndex(rm->model, meshRep))
+                            continue;
+                    }
+
                     double sim = computeMeshSimilarity(cm->model, meshCur, rm->model, meshRep, _hausdorffMaxSamplePoints);
                     if (++similarityCount % logInterval == 0)
                         GltfInstancing::logInfo("[Hausdorff]  已比较 " + std::to_string(similarityCount) + " 次 (组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + ")");

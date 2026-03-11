@@ -821,7 +821,8 @@ namespace QuadtreePipeline {
                 _config.hlodSimilarityThreshold,
                 hlodInstanceLimit,
                 _config.hausdorffMaxSamplePoints,
-                _config.allowUnknownCrossMeshClustering);
+                _config.allowUnknownCrossMeshClustering,
+                _config.materialFilterMode);
             result = detector.detect(models);
         }
         

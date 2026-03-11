@@ -6,6 +6,7 @@
 #include "instancing_result.h"  // InstancingDetectionResult
 #include "semantic_parser.h"
 #include "hausdorff_similarity.h"
+#include "material_matching.h"
 #include <vector>
 #include <map>
 #include <string>
@@ -21,13 +22,15 @@ namespace GltfInstancing {
         // semanticHashFields: comma-separated, e.g. "category,family,type"
         // similarityThreshold: threshold for Hausdorff similarity (0..1)
         // instanceLimit: minimum instances to form a group
+        // materialFilterMode: "none", "hash", or "index" - filter Hausdorff comparison by material
         SemanticHausdorffInstancingDetector(
             const SemanticParser* semanticParser,
             const std::string& semanticHashFields,
             double similarityThreshold,
             int instanceLimit,
             size_t hausdorffMaxSamplePoints = 2000,
-            bool allowUnknownCrossMeshClustering = false);
+            bool allowUnknownCrossMeshClustering = false,
+            const std::string& materialFilterMode = "none");
 
         InstancingDetectionResult detect(const std::vector<LoadedGltfModel>& loadedModels);
 
@@ -38,6 +41,7 @@ namespace GltfInstancing {
         int _instanceLimit;
         size_t _hausdorffMaxSamplePoints;
         bool _allowUnknownCrossMeshClustering;
+        std::string _materialFilterMode;
 
         std::string buildSemanticHashKey(const std::optional<SemanticInfo>& info) const;
         void traverseNode(
