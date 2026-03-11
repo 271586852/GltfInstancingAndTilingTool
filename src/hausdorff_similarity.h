@@ -34,7 +34,8 @@ namespace GltfInstancing {
         const CesiumGltf::Model& modelA,
         const CesiumGltf::Mesh& meshA,
         const CesiumGltf::Model& modelB,
-        const CesiumGltf::Mesh& meshB);
+        const CesiumGltf::Mesh& meshB,
+        size_t maxSamplePoints = 0);
 
 } // namespace GltfInstancing
 

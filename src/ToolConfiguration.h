@@ -28,6 +28,8 @@ struct ToolConfiguration {
     std::string similarityThresholds = "0.95,0.90,0.85,0.80,0.75";
     std::vector<double> similarityThresholdsParsed;  // Parsed from similarityThresholds
     double hlodSimilarityThreshold = 0.70;
+    // Limit point cloud size for Hausdorff computation (0 disables sampling).
+    size_t hausdorffMaxSamplePoints = 2000;
 
     // --- Instance LOD (Instancing LOD) Configuration ---
     bool enableInstanceLodGeneration = false;

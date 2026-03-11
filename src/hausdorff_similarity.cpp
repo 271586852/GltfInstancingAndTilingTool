@@ -53,6 +53,24 @@ namespace GltfInstancing {
     }
 
     namespace {
+        void downsampleDeterministicInPlace(std::vector<glm::dvec3>& points, size_t maxPoints) {
+            if (maxPoints == 0 || points.size() <= maxPoints) return;
+            if (maxPoints == 1) {
+                points = { points.front() };
+                return;
+            }
+
+            std::vector<glm::dvec3> sampled;
+            sampled.reserve(maxPoints);
+
+            const double step = static_cast<double>(points.size() - 1) / static_cast<double>(maxPoints - 1);
+            for (size_t i = 0; i < maxPoints; ++i) {
+                const size_t idx = static_cast<size_t>(std::llround(static_cast<double>(i) * step));
+                sampled.push_back(points[std::min(idx, points.size() - 1)]);
+            }
+            points.swap(sampled);
+        }
+
         // Adaptor for nanoflann: wrap std::vector<glm::dvec3> for KD-Tree.
         struct PointCloudAdaptor {
             const std::vector<glm::dvec3>* pts = nullptr;
@@ -118,11 +136,15 @@ namespace GltfInstancing {
         const CesiumGltf::Model& modelA,
         const CesiumGltf::Mesh& meshA,
         const CesiumGltf::Model& modelB,
-        const CesiumGltf::Mesh& meshB)
+        const CesiumGltf::Mesh& meshB,
+        size_t maxSamplePoints)
     {
         std::vector<glm::dvec3> ptsA = extractMeshPositions(modelA, meshA);
         std::vector<glm::dvec3> ptsB = extractMeshPositions(modelB, meshB);
         if (ptsA.empty() || ptsB.empty()) return -1.0;
+
+        downsampleDeterministicInPlace(ptsA, maxSamplePoints);
+        downsampleDeterministicInPlace(ptsB, maxSamplePoints);
 
         normalizePointCloud(ptsA);
         normalizePointCloud(ptsB);

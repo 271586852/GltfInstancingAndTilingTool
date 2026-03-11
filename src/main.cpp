@@ -262,6 +262,14 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 } catch (const std::exception& e) {
                     GltfInstancing::logWarning("Invalid value for 'hlod_similarity_threshold': " + value + ". Error: " + e.what());
                 }
+            } else if (key == "hausdorff_max_sample_points") {
+                try {
+                    long long v = std::stoll(value);
+                    if (v < 0) v = 0;
+                    config.hausdorffMaxSamplePoints = static_cast<size_t>(v);
+                } catch (const std::exception& e) {
+                    GltfInstancing::logWarning("Invalid value for 'hausdorff_max_sample_points' in config file (line " + std::to_string(lineNumber) + "): " + value + ". Error: " + e.what());
+                }
             } else if (key == "mesh_segmentation") {
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") {
@@ -436,6 +444,7 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("  --merge-all-glb:                     Merge all GLB outputs into a single file per type. Default: false.");
     GltfInstancing::logInfo("  --instance-limit <value>:            Minimum number of instances to form a group. Default: 2.");
     GltfInstancing::logInfo("  --instancing-detection-mode <mode>:  'legacy' (hash+bbox) or 'semantic_hausdorff'. Default: legacy.");
+    GltfInstancing::logInfo("  --hausdorff-max-sample-points <n>:   Max points per mesh for Hausdorff (semantic_hausdorff). 0 disables sampling. Default: 2000.");
     GltfInstancing::logInfo("  --mesh-segmentation:                 Export each mesh as a separate GLB file. Default: false.");
     GltfInstancing::logInfo("  --csv-dir <path>:                    Path to directory with CSV files for post-processing.");
     GltfInstancing::logInfo("  --enable-quadtree:                   Enable Quadtree HLOD pipeline. Default: false.");
@@ -1389,6 +1398,22 @@ int main(int argc, char* argv[]) {
                 GltfInstancing::logError("--instance-limit option (CLI) requires a value."); printUsage(argv[0]); return 1;
             }
         }
+        else if (arg == "--hausdorff-max-sample-points") {
+            if (argIndex + 1 < argc) {
+                try {
+                    long long v = std::stoll(argv[++argIndex]);
+                    if (v < 0) v = 0;
+                    config.hausdorffMaxSamplePoints = static_cast<size_t>(v);
+                    GltfInstancing::logDebug("Command-line override: Hausdorff max sample points: " + std::to_string(config.hausdorffMaxSamplePoints));
+                }
+                catch (const std::exception& e) {
+                    GltfInstancing::logError("Invalid value for --hausdorff-max-sample-points (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
+                }
+            }
+            else {
+                GltfInstancing::logError("--hausdorff-max-sample-points option (CLI) requires a value."); printUsage(argv[0]); return 1;
+            }
+        }
         else if (arg == "--mesh-segmentation") {
             config.meshSegmentation = true;
             config.meshSegmentationSet = true;
@@ -1779,7 +1804,7 @@ int main(int argc, char* argv[]) {
             }
             double threshold = config.similarityThresholdsParsed.empty() ? 0.95 : config.similarityThresholdsParsed[0];
             GltfInstancing::SemanticHausdorffInstancingDetector detector(
-                &semanticParser, config.semanticHashFields, threshold, config.instanceLimit);
+                &semanticParser, config.semanticHashFields, threshold, config.instanceLimit, config.hausdorffMaxSamplePoints);
             detectionResult = detector.detect(loadedModels);
         } else {
             GltfInstancing::logInfo("Using legacy instancing detection mode.");

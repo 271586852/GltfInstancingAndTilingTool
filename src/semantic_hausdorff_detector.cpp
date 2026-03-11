@@ -24,10 +24,12 @@ namespace GltfInstancing {
         const SemanticParser* semanticParser,
         const std::string& semanticHashFields,
         double similarityThreshold,
-        int instanceLimit)
+        int instanceLimit,
+        size_t hausdorffMaxSamplePoints)
         : _semanticParser(semanticParser)
         , _similarityThreshold(std::max(0.0, std::min(1.0, similarityThreshold)))
         , _instanceLimit(instanceLimit > 0 ? instanceLimit : 2)
+        , _hausdorffMaxSamplePoints(hausdorffMaxSamplePoints)
     {
         _semanticHashFieldNames = splitAndTrim(semanticHashFields, ',');
         if (_semanticHashFieldNames.empty()) {
@@ -169,7 +171,7 @@ namespace GltfInstancing {
             + std::to_string(totalInstances) + " 个实例, 正在进行相似度比较");
 
         size_t groupIdx = 0;
-        const size_t logInterval = 100;
+        const size_t logInterval = 5000;
         for (auto& [semanticKey, instances] : semanticGroups) {
             ++groupIdx;
             if (instances.empty()) {
@@ -211,7 +213,7 @@ namespace GltfInstancing {
                     if (!cm) continue;
                     const CesiumGltf::Mesh& meshCur = cm->model.meshes[inst.originalMeshIndex];
                     const CesiumGltf::Mesh& meshRep = rm->model.meshes[repMesh];
-                    double sim = computeMeshSimilarity(cm->model, meshCur, rm->model, meshRep);
+                    double sim = computeMeshSimilarity(cm->model, meshCur, rm->model, meshRep, _hausdorffMaxSamplePoints);
                     if (++similarityCount % logInterval == 0)
                         GltfInstancing::logInfo("[Hausdorff]  已比较 " + std::to_string(similarityCount) + " 次 (组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + ")");
                     if (sim >= 0 && sim >= _similarityThreshold) {

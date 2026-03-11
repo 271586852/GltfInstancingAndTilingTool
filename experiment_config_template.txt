@@ -20,6 +20,7 @@ allow_non_uniform_scale_instancing = true
 # semantic_hash_fields = category,family,type
 # similarity_thresholds = 0.95,0.90,0.85,0.80,0.75
 # hlod_similarity_threshold = 0.70
+# hausdorff_max_sample_points = 2000    # 点云采样上限(0=不采样)，越小越快但可能更不精确
 #
 # 语义数据路径：可为单文件或文件夹。若为文件夹，则在其中查找与 input_directory 下 GLB 同名的 .RISCRVT
 # 例如：SZW_HRZB_STR_26F.glb 匹配 semantic_data_path/SZW_HRZB_STR_26F.RISCRVT

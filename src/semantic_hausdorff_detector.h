@@ -25,7 +25,8 @@ namespace GltfInstancing {
             const SemanticParser* semanticParser,
             const std::string& semanticHashFields,
             double similarityThreshold,
-            int instanceLimit);
+            int instanceLimit,
+            size_t hausdorffMaxSamplePoints = 2000);
 
         InstancingDetectionResult detect(const std::vector<LoadedGltfModel>& loadedModels);
 
@@ -34,6 +35,7 @@ namespace GltfInstancing {
         std::vector<std::string> _semanticHashFieldNames;  // e.g. ["category","family","type"]
         double _similarityThreshold;
         int _instanceLimit;
+        size_t _hausdorffMaxSamplePoints;
 
         std::string buildSemanticHashKey(const std::optional<SemanticInfo>& info) const;
         void traverseNode(
