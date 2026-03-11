@@ -9,9 +9,6 @@
 struct ToolConfiguration {
     std::string inputDirectory;
     std::string outputDirectory;
-    double geometryTolerance = 0.0;
-    double normalTolerance = 0.0;
-    std::set<std::string> attributesToSkipDataHash;
     bool mergeAllGlb = false;
     int instanceLimit = 2; // Default to 2
     bool meshSegmentation = false;
@@ -40,23 +37,27 @@ struct ToolConfiguration {
     double targetScreenSSE = 16.0;
     bool enableSemanticCheck = true;
     bool enableGeometricCheck = true;
-    double lod4SizeTolerance = 0.05;
-    double lod3AspectRatioTolerance = 0.20;
+    // 每级 LOD 的相似度阈值，LOD 越粗糙越宽松。LOD5 用 [0]，LOD4 用 [1]，LOD3 用 [2]...
+    std::string instanceLodSimilarityThresholds = "0.95,0.90,0.85,0.80,0.75";
+    std::vector<double> instanceLodSimilarityThresholdsParsed;
+    // Instance LOD 实例数阈值，-1 表示使用 instance_limit
+    int instanceLodInstanceLimit = -1;
+    // Instance LOD 材质过滤，coarser LOD 可设为 "none" 更宽松
+    std::string instanceLodMaterialFilterMode = "none";
+    double lod4SizeTolerance = 0.05;      // 体积聚类回退（similarityThresholdsPerLevel 为空时）
+    double lod3AspectRatioTolerance = 0.20; // 长宽比聚类回退
     std::string semanticDataPath;  // 单文件路径或文件夹；若为文件夹，按 input_directory 下 GLB 文件名匹配同名 .RISCRVT
     std::string semanticInputDirectory;  // 可选：当 semantic_data_path 为文件夹时，用于匹配的 GLB 来源目录（默认用 input_directory）
     
     // --- HLOD Instancing Detection Parameters (Independent from Stage 1) ---
     // These parameters are used for instancing detection in HLOD/LOD generation pipelines
     // If not set, they will default to Stage 1 parameters
-    double hlodGeometryTolerance = -1.0; // -1.0 means "use Stage 1 value"
-    double hlodNormalTolerance = -1.0;   // -1.0 means "use Stage 1 value"
-    std::set<std::string> hlodAttributesToSkipDataHash;
     int hlodInstanceLimit = -1;          // -1 means "use Stage 1 value"
     bool hlodAllowNonUniformScaleInstancing = false;
-    bool hlodGeometryToleranceSet = false;
-    bool hlodNormalToleranceSet = false;
-    bool hlodAttributesToSkipDataHashSet = false;
     bool hlodInstanceLimitSet = false;
+    // HLOD 每层级相似度阈值，父层级越粗越宽松。若不足则用最后一值
+    std::string hlodSimilarityThresholds = "0.70,0.65,0.60,0.55,0.50";
+    std::vector<double> hlodSimilarityThresholdsParsed;
 
     // --- Non-Instance LOD Configuration ---
     bool enableNonInstancedLodGeneration = false;
@@ -64,6 +65,9 @@ struct ToolConfiguration {
     double nonInstancedLodRatio = 0.5;
     size_t nonInstancedMinSimplifyIndexCount = 300;
     bool enableNonInstancedLodInstancing = false;
+    // 非实例化 LOD 每级相似度阈值，越粗糙越宽松
+    std::string nonInstancedLodSimilarityThresholds = "0.95,0.90,0.85";
+    std::vector<double> nonInstancedLodSimilarityThresholdsParsed;
 
     // --- Quadtree Pipeline Configuration ---
     bool enableQuadtree = false;
@@ -95,9 +99,6 @@ struct ToolConfiguration {
     // Flags to track if a parameter was set
     bool inputDirectorySet = false;
     bool outputDirectorySet = false;
-    bool geometryToleranceSet = false;
-    bool normalToleranceSet = false;
-    bool attributesToSkipDataHashSet = false;
     bool mergeAllGlbSet = false;
     bool instanceLimitSet = false;
     bool meshSegmentationSet = false;

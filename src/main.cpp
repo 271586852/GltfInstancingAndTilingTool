@@ -182,27 +182,6 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
             } else if (key == "output_directory") {
                 config.outputDirectory = value;
                 config.outputDirectorySet = true;
-            } else if (key == "tolerance" || key == "geometry_tolerance") {
-                try {
-                    config.geometryTolerance = std::stod(value);
-                    config.geometryToleranceSet = true;
-                } catch (const std::exception& e) {
-                    GltfInstancing::logWarning("Invalid value for '" + key + "' in config file (line " + std::to_string(lineNumber) + "): " + value + ". Error: " + e.what());
-                }
-            } else if (key == "normal_tolerance") {
-                try {
-                    config.normalTolerance = std::stod(value);
-                    if (config.normalTolerance < 0.0) {
-                        GltfInstancing::logWarning("Negative normal_tolerance in config (line " + std::to_string(lineNumber) + ") adjusted to 0.0.");
-                        config.normalTolerance = 0.0;
-                    }
-                    config.normalToleranceSet = true;
-                } catch (const std::exception& e) {
-                    GltfInstancing::logWarning("Invalid value for 'normal_tolerance' in config file (line " + std::to_string(lineNumber) + "): " + value + ". Error: " + e.what());
-                }
-            } else if (key == "skip_attribute_data_hash") {
-                config.attributesToSkipDataHash = splitAndTrim(value, ',');
-                config.attributesToSkipDataHashSet = true;
             } else if (key == "merge_all_glb") {
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") {
@@ -307,6 +286,24 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 try { config.lod4SizeTolerance = std::stod(value); } catch(...) {}
             } else if (key == "lod3_aspect_ratio_tolerance") {
                 try { config.lod3AspectRatioTolerance = std::stod(value); } catch(...) {}
+            } else if (key == "instance_lod_similarity_thresholds") {
+                config.instanceLodSimilarityThresholds = value;
+                config.instanceLodSimilarityThresholdsParsed.clear();
+                std::istringstream ss(value);
+                std::string part;
+                while (std::getline(ss, part, ',')) {
+                    try {
+                        double v = std::stod(part);
+                        config.instanceLodSimilarityThresholdsParsed.push_back(std::max(0.0, std::min(1.0, v)));
+                    } catch (...) {}
+                }
+            } else if (key == "instance_lod_instance_limit") {
+                try { config.instanceLodInstanceLimit = std::stoi(value); } catch(...) {}
+            } else if (key == "instance_lod_material_filter_mode") {
+                std::string modeLower = value;
+                std::transform(modeLower.begin(), modeLower.end(), modeLower.begin(), ::tolower);
+                if (modeLower == "none" || modeLower == "hash" || modeLower == "index")
+                    config.instanceLodMaterialFilterMode = modeLower;
             } else if (key == "enable_semantic_check") {
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") config.enableSemanticCheck = true;
@@ -335,6 +332,17 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") config.enableNonInstancedLodInstancing = true;
                 else config.enableNonInstancedLodInstancing = false;
+            } else if (key == "non_instanced_lod_similarity_thresholds") {
+                config.nonInstancedLodSimilarityThresholds = value;
+                config.nonInstancedLodSimilarityThresholdsParsed.clear();
+                std::istringstream ss(value);
+                std::string part;
+                while (std::getline(ss, part, ',')) {
+                    try {
+                        double v = std::stod(part);
+                        config.nonInstancedLodSimilarityThresholdsParsed.push_back(std::max(0.0, std::min(1.0, v)));
+                    } catch (...) {}
+                }
             } else if (key == "enable_quadtree") {
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") config.enableQuadtree = true;
@@ -367,27 +375,17 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 config.experimentStrategyId = value;
             }
             // --- HLOD Instancing Detection Parameters ---
-            else if (key == "hlod_geometry_tolerance" || key == "hlod_tolerance") {
-                try {
-                    config.hlodGeometryTolerance = std::stod(value);
-                    config.hlodGeometryToleranceSet = true;
-                } catch (const std::exception& e) {
-                    GltfInstancing::logWarning("Invalid value for '" + key + "' in config file (line " + std::to_string(lineNumber) + "): " + value + ". Error: " + e.what());
+            else if (key == "hlod_similarity_thresholds") {
+                config.hlodSimilarityThresholds = value;
+                config.hlodSimilarityThresholdsParsed.clear();
+                std::istringstream ss(value);
+                std::string part;
+                while (std::getline(ss, part, ',')) {
+                    try {
+                        double v = std::stod(part);
+                        config.hlodSimilarityThresholdsParsed.push_back(std::max(0.0, std::min(1.0, v)));
+                    } catch (...) {}
                 }
-            } else if (key == "hlod_normal_tolerance") {
-                try {
-                    config.hlodNormalTolerance = std::stod(value);
-                    if (config.hlodNormalTolerance < 0.0) {
-                        GltfInstancing::logWarning("Negative hlod_normal_tolerance in config (line " + std::to_string(lineNumber) + ") adjusted to 0.0.");
-                        config.hlodNormalTolerance = 0.0;
-                    }
-                    config.hlodNormalToleranceSet = true;
-                } catch (const std::exception& e) {
-                    GltfInstancing::logWarning("Invalid value for 'hlod_normal_tolerance' in config file (line " + std::to_string(lineNumber) + "): " + value + ". Error: " + e.what());
-                }
-            } else if (key == "hlod_skip_attribute_data_hash") {
-                config.hlodAttributesToSkipDataHash = splitAndTrim(value, ',');
-                config.hlodAttributesToSkipDataHashSet = true;
             } else if (key == "hlod_instance_limit") {
                 try {
                     config.hlodInstanceLimit = std::stoi(value);
@@ -432,6 +430,45 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
     if (config.similarityThresholdsParsed.empty()) {
         config.similarityThresholdsParsed = { 0.95, 0.90, 0.85, 0.80, 0.75 };
     }
+    if (config.instanceLodSimilarityThresholdsParsed.empty() && !config.instanceLodSimilarityThresholds.empty()) {
+        std::istringstream ss(config.instanceLodSimilarityThresholds);
+        std::string part;
+        while (std::getline(ss, part, ',')) {
+            try {
+                double v = std::stod(part);
+                config.instanceLodSimilarityThresholdsParsed.push_back(std::max(0.0, std::min(1.0, v)));
+            } catch (...) {}
+        }
+    }
+    if (config.instanceLodSimilarityThresholdsParsed.empty()) {
+        config.instanceLodSimilarityThresholdsParsed = { 0.95, 0.90, 0.85, 0.80, 0.75 };
+    }
+    if (config.nonInstancedLodSimilarityThresholdsParsed.empty() && !config.nonInstancedLodSimilarityThresholds.empty()) {
+        std::istringstream ss(config.nonInstancedLodSimilarityThresholds);
+        std::string part;
+        while (std::getline(ss, part, ',')) {
+            try {
+                double v = std::stod(part);
+                config.nonInstancedLodSimilarityThresholdsParsed.push_back(std::max(0.0, std::min(1.0, v)));
+            } catch (...) {}
+        }
+    }
+    if (config.nonInstancedLodSimilarityThresholdsParsed.empty()) {
+        config.nonInstancedLodSimilarityThresholdsParsed = { 0.95, 0.90, 0.85 };
+    }
+    if (config.hlodSimilarityThresholdsParsed.empty() && !config.hlodSimilarityThresholds.empty()) {
+        std::istringstream ss(config.hlodSimilarityThresholds);
+        std::string part;
+        while (std::getline(ss, part, ',')) {
+            try {
+                double v = std::stod(part);
+                config.hlodSimilarityThresholdsParsed.push_back(std::max(0.0, std::min(1.0, v)));
+            } catch (...) {}
+        }
+    }
+    if (config.hlodSimilarityThresholdsParsed.empty()) {
+        config.hlodSimilarityThresholdsParsed = { 0.70, 0.65, 0.60, 0.55, 0.50 };
+    }
 
     GltfInstancing::logInfo("Finished loading configuration from: " + configFilePath);
     return true;
@@ -447,10 +484,6 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("  --output_directory <path>:           Directory where processed files will be saved. Defaults to '<input_directory>/processed_output'.");
     GltfInstancing::logInfo("  --config <file_path>:                Path to a configuration file to load settings from.");
     GltfInstancing::logInfo("  --log-level <level>:                 Set log verbosity. Options: NONE, ERROR, WARNING, INFO, DEBUG, VERBOSE. Default: INFO.");
-    GltfInstancing::logInfo("  --tolerance <value>:                 Geometric tolerance for POSITION comparison (e.g., 0.01). Default: 0.0.");
-    GltfInstancing::logInfo("  --skip-attribute-data-hash <attrs>:  Comma-separated attributes (e.g., NORMAL,TEXCOORD_0) to skip data hashing for.");
-    GltfInstancing::logInfo("                                       POSITION is always skipped if tolerance > 0.");
-    GltfInstancing::logInfo("  --normal-tolerance <value>:          Tolerance for NORMAL vector comparison. Default: 0.0.");
     GltfInstancing::logInfo("  --merge-all-glb:                     Merge all GLB outputs into a single file per type. Default: false.");
     GltfInstancing::logInfo("  --instance-limit <value>:            Minimum number of instances to form a group. Default: 2.");
     GltfInstancing::logInfo("  --instancing-detection-mode <mode>:  semantic_material_geometric (default).");
@@ -471,12 +504,6 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("  --experiment-strategy-id <id>:       Strategy ID for experiment organization.");
     GltfInstancing::logInfo("");
     GltfInstancing::logInfo("HLOD Instancing Detection Parameters (Independent from Stage 1):");
-    GltfInstancing::logInfo("  --hlod-tolerance <value>:             Geometric tolerance for HLOD instancing detection.");
-    GltfInstancing::logInfo("                                       If not set, uses Stage 1 tolerance.");
-    GltfInstancing::logInfo("  --hlod-normal-tolerance <value>:    Normal tolerance for HLOD instancing detection.");
-    GltfInstancing::logInfo("                                       If not set, uses Stage 1 normal tolerance.");
-    GltfInstancing::logInfo("  --hlod-skip-attribute-data-hash <attrs>: Attributes to skip for HLOD detection.");
-    GltfInstancing::logInfo("                                       If not set, uses Stage 1 attributes.");
     GltfInstancing::logInfo("  --hlod-instance-limit <value>:        Instance limit for HLOD detection. Default: uses Stage 1 limit.");
     GltfInstancing::logInfo("  --hlod-allow-non-uniform-scale-instancing: Allow non-uniform scale for HLOD.");
 }
@@ -859,10 +886,9 @@ void writeInstancingAnalysisCsvEnhanced(
         ExperimentFramework::StrategyInfo strategy;
         strategy.id = strategyId;
         strategy.name = strategyId;
-        strategy.description = "Instancing detection with tolerance " + std::to_string(config.geometryTolerance);
-        strategy.parameters["tolerance"] = std::to_string(config.geometryTolerance);
+        strategy.description = "Instancing detection (semantic + Hausdorff similarity)";
+        strategy.parameters["similarity_thresholds"] = config.similarityThresholds;
         strategy.parameters["instance_limit"] = std::to_string(config.instanceLimit);
-        strategy.parameters["normal_tolerance"] = std::to_string(config.normalTolerance);
 
         GltfInstancing::logInfo("Creating experiment structure for INSTANCING_STRATEGY, dataset: " + datasetName + ", strategy: " + strategyId);
         auto expDir = expManager.createExperimentStructure(
@@ -974,35 +1000,15 @@ struct LodStats {
 // Helper function to get HLOD instancing detection parameters
 // If HLOD-specific parameters are not set, use Stage 1 parameters
 struct HlodInstancingParams {
-    double geometryTolerance;
-    double normalTolerance;
-    std::set<std::string> attributesToSkipDataHash;
     int instanceLimit;
     bool allowNonUniformScaleInstancing;
 };
 
 HlodInstancingParams getHlodInstancingParams(const ToolConfiguration& config) {
     HlodInstancingParams params;
-    
-    // Geometry tolerance: use HLOD value if set, otherwise use Stage 1 value
-    params.geometryTolerance = config.hlodGeometryToleranceSet ? 
-        config.hlodGeometryTolerance : config.geometryTolerance;
-    
-    // Normal tolerance: use HLOD value if set, otherwise use Stage 1 value
-    params.normalTolerance = config.hlodNormalToleranceSet ? 
-        config.hlodNormalTolerance : config.normalTolerance;
-    
-    // Attributes to skip: use HLOD value if set, otherwise use Stage 1 value
-    params.attributesToSkipDataHash = config.hlodAttributesToSkipDataHashSet ? 
-        config.hlodAttributesToSkipDataHash : config.attributesToSkipDataHash;
-    
-    // Instance limit: use HLOD value if set, otherwise use Stage 1 value
     params.instanceLimit = config.hlodInstanceLimitSet ? 
         config.hlodInstanceLimit : config.instanceLimit;
-    
-    // Allow non-uniform scale: use HLOD value (always has a default)
     params.allowNonUniformScaleInstancing = config.hlodAllowNonUniformScaleInstancing;
-    
     return params;
 }
 
@@ -1337,54 +1343,6 @@ int main(int argc, char* argv[]) {
                 GltfInstancing::logError("--output_directory option (CLI) requires a path."); printUsage(argv[0]); return 1;
             }
         }
-        else if (arg == "--tolerance") {
-            if (argIndex + 1 < argc) {
-                try {
-                    config.geometryTolerance = std::stod(argv[++argIndex]);
-                    config.geometryToleranceSet = true;
-                    GltfInstancing::logDebug("Command-line override: Using geometry tolerance: " + std::to_string(config.geometryTolerance));
-                }
-                catch (const std::exception& e) {
-                    GltfInstancing::logError("Invalid value for --tolerance (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
-                }
-            }
-            else {
-                GltfInstancing::logError("--tolerance option (CLI) requires a value."); printUsage(argv[0]); return 1;
-            }
-        }
-        else if (arg == "--skip-attribute-data-hash") {
-            if (argIndex + 1 < argc) {
-                config.attributesToSkipDataHash = splitAndTrim(argv[++argIndex], ',');
-                config.attributesToSkipDataHashSet = true;
-                if (!config.attributesToSkipDataHash.empty()) {
-                    std::string attrsLogged = "Command-line override: Tolerance mode will skip data hashing for attributes: ";
-                    for (const auto& attr : config.attributesToSkipDataHash) attrsLogged += attr + " ";
-                    GltfInstancing::logDebug(attrsLogged);
-                }
-            }
-            else {
-                GltfInstancing::logError("--skip-attribute-data-hash option (CLI) requires a comma-separated list."); printUsage(argv[0]); return 1;
-            }
-        }
-        else if (arg == "--normal-tolerance") {
-            if (argIndex + 1 < argc) {
-                try {
-                    config.normalTolerance = std::stod(argv[++argIndex]);
-                    if (config.normalTolerance < 0.0) {
-                        GltfInstancing::logWarning("WARNING (CLI): Normal tolerance cannot be negative. Using 0.0.");
-                        config.normalTolerance = 0.0;
-                    }
-                    config.normalToleranceSet = true;
-                    GltfInstancing::logDebug("Command-line override: Using normal tolerance: " + std::to_string(config.normalTolerance));
-                }
-                catch (const std::exception& e) {
-                    GltfInstancing::logError("Invalid value for --normal-tolerance (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
-                }
-            }
-            else {
-                GltfInstancing::logError("--normal-tolerance option (CLI) requires a value."); printUsage(argv[0]); return 1;
-            }
-        }
         else if (arg == "--merge-all-glb") {
             config.mergeAllGlb = true;
             config.mergeAllGlbSet = true;
@@ -1521,54 +1479,6 @@ int main(int argc, char* argv[]) {
                 GltfInstancing::logError("--instancing-detection-mode requires a value."); printUsage(argv[0]); return 1;
             }
         }
-        else if (arg == "--hlod-tolerance" || arg == "--hlod-geometry-tolerance") {
-            if (argIndex + 1 < argc) {
-                try {
-                    config.hlodGeometryTolerance = std::stod(argv[++argIndex]);
-                    config.hlodGeometryToleranceSet = true;
-                    GltfInstancing::logDebug("Command-line override: Using HLOD geometry tolerance: " + std::to_string(config.hlodGeometryTolerance));
-                }
-                catch (const std::exception& e) {
-                    GltfInstancing::logError("Invalid value for --hlod-tolerance (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
-                }
-            }
-            else {
-                GltfInstancing::logError("--hlod-tolerance option (CLI) requires a value."); printUsage(argv[0]); return 1;
-            }
-        }
-        else if (arg == "--hlod-normal-tolerance") {
-            if (argIndex + 1 < argc) {
-                try {
-                    config.hlodNormalTolerance = std::stod(argv[++argIndex]);
-                    if (config.hlodNormalTolerance < 0.0) {
-                        GltfInstancing::logWarning("WARNING (CLI): HLOD normal tolerance cannot be negative. Using 0.0.");
-                        config.hlodNormalTolerance = 0.0;
-                    }
-                    config.hlodNormalToleranceSet = true;
-                    GltfInstancing::logDebug("Command-line override: Using HLOD normal tolerance: " + std::to_string(config.hlodNormalTolerance));
-                }
-                catch (const std::exception& e) {
-                    GltfInstancing::logError("Invalid value for --hlod-normal-tolerance (CLI): " + std::string(argv[argIndex]) + ". Error: " + e.what()); printUsage(argv[0]); return 1;
-                }
-            }
-            else {
-                GltfInstancing::logError("--hlod-normal-tolerance option (CLI) requires a value."); printUsage(argv[0]); return 1;
-            }
-        }
-        else if (arg == "--hlod-skip-attribute-data-hash") {
-            if (argIndex + 1 < argc) {
-                config.hlodAttributesToSkipDataHash = splitAndTrim(argv[++argIndex], ',');
-                config.hlodAttributesToSkipDataHashSet = true;
-                if (!config.hlodAttributesToSkipDataHash.empty()) {
-                    std::string attrsLogged = "Command-line override: HLOD tolerance mode will skip data hashing for attributes: ";
-                    for (const auto& attr : config.hlodAttributesToSkipDataHash) attrsLogged += attr + " ";
-                    GltfInstancing::logDebug(attrsLogged);
-                }
-            }
-            else {
-                GltfInstancing::logError("--hlod-skip-attribute-data-hash option (CLI) requires a comma-separated list."); printUsage(argv[0]); return 1;
-            }
-        }
         else if (arg == "--hlod-instance-limit") {
             if (argIndex + 1 < argc) {
                 try {
@@ -1626,6 +1536,15 @@ int main(int argc, char* argv[]) {
     }
     if (config.similarityThresholdsParsed.empty()) {
         config.similarityThresholdsParsed = { 0.95, 0.90, 0.85, 0.80, 0.75 };
+    }
+    if (config.instanceLodSimilarityThresholdsParsed.empty()) {
+        config.instanceLodSimilarityThresholdsParsed = { 0.95, 0.90, 0.85, 0.80, 0.75 };
+    }
+    if (config.nonInstancedLodSimilarityThresholdsParsed.empty()) {
+        config.nonInstancedLodSimilarityThresholdsParsed = { 0.95, 0.90, 0.85 };
+    }
+    if (config.hlodSimilarityThresholdsParsed.empty()) {
+        config.hlodSimilarityThresholdsParsed = { 0.70, 0.65, 0.60, 0.55, 0.50 };
     }
 
     // --- Quadtree Pipeline Execution ---
@@ -1862,7 +1781,7 @@ int main(int argc, char* argv[]) {
         strategy.name = "Non-Uniform Scale Instancing";
         strategy.description = "Allow non-uniform scale transformations for instancing detection";
         strategy.parameters["allow_non_uniform_scale"] = "true";
-        strategy.parameters["geometry_tolerance"] = std::to_string(config.geometryTolerance);
+        strategy.parameters["similarity_thresholds"] = config.similarityThresholds;
         strategy.parameters["instance_limit"] = std::to_string(config.instanceLimit);
 
         GltfInstancing::logInfo("Creating experiment structure for NON_UNIFORM_SCALE, dataset: " + datasetName + ", strategy: " + strategyId);
@@ -1878,7 +1797,7 @@ int main(int argc, char* argv[]) {
         // 生成README
         std::map<std::string, ExperimentFramework::MetricValue> metrics;
         metrics["Non-Uniform Scale Enabled"] = {"Non-Uniform Scale", 1.0, "boolean", "Allow non-uniform scale instancing"};
-        metrics["Geometry Tolerance"] = {"Tolerance", config.geometryTolerance, "m", "Geometry matching tolerance"};
+        metrics["Similarity Thresholds"] = {"Similarity", 0.0, "", config.similarityThresholds};
         std::filesystem::path readmePath = expDir / "README.md";
         ExperimentFramework::ReadmeGenerator::writeStrategyReadme(readmePath, strategy, metrics);
         GltfInstancing::logInfo("Non-uniform scale experiment README written to: " + readmePath.string());
@@ -1957,7 +1876,7 @@ int main(int argc, char* argv[]) {
         ExperimentFramework::StrategyInfo strategy;
         strategy.id = strategyId;
         strategy.name = strategyId;
-        strategy.description = "Instancing detection with tolerance " + std::to_string(config.geometryTolerance);
+        strategy.description = "Instancing detection (semantic + Hausdorff similarity)";
 
         auto expDir = expManager.createExperimentStructure(
             ExperimentFramework::ExperimentType::INSTANCING_STRATEGY,
@@ -2061,8 +1980,13 @@ int main(int argc, char* argv[]) {
                             else
                                 lodSemanticParser.parse(config.semanticDataPath);
                         }
-                        double thresh = (levelInfo.level < static_cast<int>(config.similarityThresholdsParsed.size()))
-                            ? config.similarityThresholdsParsed[levelInfo.level] : config.hlodSimilarityThreshold;
+                        double thresh = config.hlodSimilarityThreshold;
+                        if (!config.nonInstancedLodSimilarityThresholdsParsed.empty()) {
+                            size_t idx = static_cast<size_t>(levelInfo.level);
+                            if (idx >= config.nonInstancedLodSimilarityThresholdsParsed.size())
+                                idx = config.nonInstancedLodSimilarityThresholdsParsed.size() - 1;
+                            thresh = config.nonInstancedLodSimilarityThresholdsParsed[idx];
+                        }
                         GltfInstancing::SemanticMaterialGeometricDetector lodDetector(
                             &lodSemanticParser, config.semanticHashFields, thresh, hlodParams.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering, config.materialFilterMode);
                         lodDetectionResult = lodDetector.detect(lodModels);
@@ -2185,6 +2109,12 @@ int main(int argc, char* argv[]) {
         lodConfig.targetScreenSSE = config.targetScreenSSE;
         lodConfig.enableSemanticCheck = config.enableSemanticCheck;
         lodConfig.enableGeometricCheck = config.enableGeometricCheck;
+        lodConfig.similarityThresholdsPerLevel = config.instanceLodSimilarityThresholdsParsed.size() >= 5
+            ? std::vector<double>(config.instanceLodSimilarityThresholdsParsed.begin() + 1, config.instanceLodSimilarityThresholdsParsed.begin() + 5)
+            : std::vector<double>{ 0.90, 0.85, 0.80, 0.75 };
+        lodConfig.hausdorffMaxSamplePoints = config.hausdorffMaxSamplePoints;
+        lodConfig.instanceLimit = config.instanceLodInstanceLimit >= 1 ? config.instanceLodInstanceLimit : config.instanceLimit;
+        lodConfig.materialFilterMode = config.instanceLodMaterialFilterMode;
         lodConfig.lod4_sizeTolerance = config.lod4SizeTolerance;
         lodConfig.lod3_aspectRatioTolerance = config.lod3AspectRatioTolerance;
 
@@ -2408,7 +2338,7 @@ int main(int argc, char* argv[]) {
             strategy.parameters["instancing_enabled"] = "true";
             strategy.parameters["lod_enabled"] = std::to_string(config.enableInstanceLodGeneration);
             strategy.parameters["hlod_enabled"] = std::to_string(config.enableQuadtree);
-            strategy.parameters["tolerance"] = std::to_string(config.geometryTolerance);
+            strategy.parameters["similarity_thresholds"] = config.similarityThresholds;
 
             GltfInstancing::logInfo("Creating experiment structure for END_TO_END, dataset: " + datasetName + ", strategy: " + strategyId);
             auto expDir = expManager.createExperimentStructure(

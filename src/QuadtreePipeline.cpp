@@ -815,10 +815,17 @@ namespace QuadtreePipeline {
                     semanticParser.parse(_config.semanticDataPath);
                 }
             }
+            double hlodThresh = _config.hlodSimilarityThreshold;
+            if (!_config.hlodSimilarityThresholdsParsed.empty()) {
+                // 父 tile 越粗(level 越小)越宽松：level 0=root 用最后一值，level 越大用越前值
+                size_t n = _config.hlodSimilarityThresholdsParsed.size();
+                size_t idx = (n > 0 && level < static_cast<int>(n)) ? (n - 1 - static_cast<size_t>(level)) : 0;
+                hlodThresh = _config.hlodSimilarityThresholdsParsed[idx];
+            }
             GltfInstancing::SemanticMaterialGeometricDetector detector(
                 &semanticParser,
                 _config.semanticHashFields,
-                _config.hlodSimilarityThreshold,
+                hlodThresh,
                 hlodInstanceLimit,
                 _config.hausdorffMaxSamplePoints,
                 _config.allowUnknownCrossMeshClustering,

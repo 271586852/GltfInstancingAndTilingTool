@@ -49,7 +49,7 @@ namespace GltfInstancing {
 
         // Main function to generate a new GLB file
         // loadedModels: Vector of original models, needed for accessing mesh/material data.
-        // detectionResult: The output from InstancingDetector.
+        // detectionResult: The output from SemanticMaterialGeometricDetector.
         // outputPath: Path to write the new GLB file.
         // Returns the path to the generated GLB if successful, std::nullopt otherwise.
         // Also returns the overall bounding box of the generated content.

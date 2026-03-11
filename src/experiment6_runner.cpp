@@ -507,6 +507,14 @@ void processSingleGlbFullPipeline(
         lodConfig.targetScreenSSE = baseConfig.targetScreenSSE;
         lodConfig.enableSemanticCheck = baseConfig.enableSemanticCheck;
         lodConfig.enableGeometricCheck = baseConfig.enableGeometricCheck;
+        lodConfig.similarityThresholdsPerLevel = baseConfig.instanceLodSimilarityThresholdsParsed.size() >= 5
+            ? std::vector<double>(baseConfig.instanceLodSimilarityThresholdsParsed.begin() + 1, baseConfig.instanceLodSimilarityThresholdsParsed.begin() + 5)
+            : std::vector<double>{ 0.90, 0.85, 0.80, 0.75 };
+        lodConfig.hausdorffMaxSamplePoints = baseConfig.hausdorffMaxSamplePoints;
+        lodConfig.instanceLimit = baseConfig.instanceLodInstanceLimit >= 1 ? baseConfig.instanceLodInstanceLimit : baseConfig.instanceLimit;
+        lodConfig.materialFilterMode = baseConfig.instanceLodMaterialFilterMode;
+        lodConfig.lod4_sizeTolerance = baseConfig.lod4SizeTolerance;
+        lodConfig.lod3_aspectRatioTolerance = baseConfig.lod3AspectRatioTolerance;
 
         // Create LOD manager and generate LODs
         GltfInstancing::InstancingLODManager lodManager(lodConfig);
@@ -688,6 +696,14 @@ void runExperiment6(
                 lodConfig.targetScreenSSE = config.targetScreenSSE;
                 lodConfig.enableSemanticCheck = config.enableSemanticCheck;
                 lodConfig.enableGeometricCheck = config.enableGeometricCheck;
+                lodConfig.similarityThresholdsPerLevel = config.instanceLodSimilarityThresholdsParsed.size() >= 5
+                    ? std::vector<double>(config.instanceLodSimilarityThresholdsParsed.begin() + 1, config.instanceLodSimilarityThresholdsParsed.begin() + 5)
+                    : std::vector<double>{ 0.90, 0.85, 0.80, 0.75 };
+                lodConfig.hausdorffMaxSamplePoints = config.hausdorffMaxSamplePoints;
+                lodConfig.instanceLimit = config.instanceLodInstanceLimit >= 1 ? config.instanceLodInstanceLimit : config.instanceLimit;
+                lodConfig.materialFilterMode = config.instanceLodMaterialFilterMode;
+                lodConfig.lod4_sizeTolerance = config.lod4SizeTolerance;
+                lodConfig.lod3_aspectRatioTolerance = config.lod3AspectRatioTolerance;
 
                 // Create LOD manager and generate LODs
                 GltfInstancing::InstancingLODManager lodManager(lodConfig);

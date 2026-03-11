@@ -399,9 +399,8 @@ bool ConfigGenerator::writeConfigJson(
     j["strategy"]["parameters"] = strategy.parameters;
 
     // 关键参数
-    j["parameters"]["tolerance"] = config.geometryTolerance;
+    j["parameters"]["similarity_thresholds"] = config.similarityThresholds;
     j["parameters"]["instance_limit"] = config.instanceLimit;
-    j["parameters"]["normal_tolerance"] = config.normalTolerance;
     j["parameters"]["allow_non_uniform_scale"] = config.allowNonUniformScaleInstancing;
     j["parameters"]["lod_ratio"] = config.nonInstancedLodRatio;
     j["parameters"]["quadtree_max_depth"] = config.quadtreeMaxDepth;

@@ -1,0 +1,33 @@
+# =============================================================================
+# GltfInstancingAndTilingTool 示范配置
+# 仅保留常用参数，其余使用默认值
+# =============================================================================
+
+# --- 必填 ---
+input_directory = D:/Data/BIM/住宅标准层
+output_directory = D:/Experiments/output
+
+# --- Stage 1 实例化检测 ---
+instance_limit = 3
+similarity_thresholds = 0.95,0.90,0.85,0.80,0.75
+allow_non_uniform_scale_instancing = true
+
+# 语义数据（有 .RISCRVT 时必填）
+semantic_data_path = D:/Data/semantic
+
+# --- Instance LOD ---
+enable_instance_lod_generation = true
+lod_level_count = 5
+instance_lod_similarity_thresholds = 0.95,0.90,0.85,0.80,0.75
+
+# --- Quadtree HLOD ---
+enable_quadtree = true
+quadtree_max_depth = 6
+quadtree_max_objects_per_tile = 50
+hlod_instance_limit = 3
+hlod_similarity_thresholds = 0.70,0.65,0.60,0.55,0.50
+
+# --- 实验模式 ---
+enable_experiment_mode = true
+run_cross_glb_hlod_experiment = true
+experiment_dataset_name = 多楼层建筑

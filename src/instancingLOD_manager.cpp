@@ -1,4 +1,6 @@
 #include "instancingLOD_manager.h"
+#include "hausdorff_similarity.h"
+#include "material_matching.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -32,14 +34,14 @@ namespace GltfInstancing {
 
         // 2. LOD4 (Variant)
         if (_config.maxLODLevels >= 4) {
-            results[4] = buildLOD4(lod5Meshes);
+            results[4] = buildLOD4(lod5Meshes, loadedModels);
             logMessage("LOD4 generated: " + std::to_string(results[4].nodes.size()) + " unique meshes.");
         }
 
         // 3. LOD3 (Class)
         if (_config.maxLODLevels >= 3) {
-            // LOD3 åŸºäº LOD4 çš„ç»“æœç»§ç»­èšå?
-            results[3] = buildLOD3(results[4].nodes);
+            // LOD3 ?Ÿ?ä? LOD4 çš„ç?“?œç?§ç?­?š??
+            results[3] = buildLOD3(results[4].nodes, loadedModels);
             logMessage("LOD3 generated: " + std::to_string(results[3].nodes.size()) + " unique meshes.");
         }
 
@@ -51,7 +53,7 @@ namespace GltfInstancing {
 
         // 5. LOD1 (Proxy)
         if (_config.maxLODLevels >= 1) {
-            // LOD1 åŸºäº LOD2 (æˆ–è€…ä»»ä½•ä¸€çº? ç”Ÿæˆï¼Œå› ä¸ºå®ƒå®Œå…¨æ›¿æ¢äº†å‡ ä½•ä½“
+            // LOD1 ?Ÿ?ä? LOD2 (?ˆ–?€…ä??ä?•ä¸€ç?? ç”Ÿ?ˆ??Œ?› ä¸???ƒ??Œ?…¨?›???ä?†?‡ ä?•ä?“
             results[1] = buildLOD1(results[2].nodes);
             logMessage("LOD1 generated: " + std::to_string(results[1].nodes.size()) + " unique meshes (Proxies).");
         }
@@ -66,26 +68,26 @@ namespace GltfInstancing {
     ) {
         std::vector<ExtendedMeshInfo> result;
 
-        // å¤„ç† Instanced Groups
+        // ?¤„ç† Instanced Groups
         for (const auto& group : lod5Data.instancedGroups) {
             ExtendedMeshInfo info;
-            info.originalMeshId = group.representativeMeshIndexInModel; // è¿™é‡Œå¯èƒ½éœ€è¦å…¨å±€å”¯ä¸€IDï¼Œæš‚ç”¨å±€éƒ?
+            info.originalMeshId = group.representativeMeshIndexInModel; // ??™é‡Œ???ƒ?éœ€???…¨??€?”?ä¸€ID??Œ?š‚ç”¨??€éƒ?
             info.sourceModelIndex = group.representativeGltfModelIndex;
             info.sourceMeshIndex = group.representativeMeshIndexInModel;
             info.meshName = group.representativeMeshName;
             info.instances = group.instances;
 
-            // è·å–å‡ ä½•ä¿¡æ¯
+            // ???–?‡ ä?•ä????
             const auto& model = loadedModels[info.sourceModelIndex].model;
             if (info.sourceMeshIndex >= 0 && info.sourceMeshIndex < model.meshes.size()) {
                 const auto& mesh = model.meshes[info.sourceMeshIndex];
                 info.vertexCount = 0;
-                // è®¡ç®— AABB å’?é¡¶ç‚¹æ•?
+                // ???ç?— AABB ?’?é??ç‚??•?
                 for (const auto& prim : mesh.primitives) {
                     BoundingBox primBox = getPrimitiveBoundingBox(model, prim);
                     info.aabb.merge(primBox);
                     
-                    // ä¼°ç®—é¡¶ç‚¹æ•?(é€šè¿‡ POSITION accessor)
+                    // ä?°ç?—é??ç‚??•?(é€š??‡ POSITION accessor)
                      auto posIt = prim.attributes.find("POSITION");
                      if (posIt != prim.attributes.end()) {
                          const auto& accessor = model.accessors[posIt->second];
@@ -94,12 +96,12 @@ namespace GltfInstancing {
                 }
             }
 
-            // è®¡ç®—è¡ç”Ÿå‡ ä½•ç‰¹å¾
+            // ???ç?—??ç”Ÿ?‡ ä?•ç‰???
             glm::dvec3 size = info.aabb.max - info.aabb.min;
             info.volume = size.x * size.y * size.z;
             info.diagonal = glm::length(size);
 
-            // è·å–è¯­ä¹‰ä¿¡æ¯ (æ”¯æŒ glbStem + meshHash åŒ¹é…)
+            // ???–??­ä?‰ä???? (?”??Œ glbStem + meshHash ?Œ?é…)
             std::string glbStem;
             if (info.sourceModelIndex >= 0 && info.sourceModelIndex < static_cast<int>(loadedModels.size()))
                 glbStem = loadedModels[info.sourceModelIndex].originalPath.stem().string();
@@ -107,7 +109,7 @@ namespace GltfInstancing {
             if (semOpt.has_value()) {
                 info.semantic = semOpt.value();
             } else {
-                // å¦‚æœæ²¡æœ‰è¯­ä¹‰ï¼Œç»™é»˜è®¤å€¼æˆ–ä¿ç•™ç©?
+                // ??‚?œ????œ‰??­ä?‰??Œç?™é?˜??¤?€??ˆ–ä?ç•™ç??
                 info.semantic.category = "Unknown";
                 info.semantic.family = "Unknown";
             }
@@ -115,18 +117,19 @@ namespace GltfInstancing {
             result.push_back(info);
         }
 
-        // TODO: å¤„ç† Non-Instanced Meshes (ä¹Ÿå¯ä»¥è§†ä¸ºåªæœ‰ä¸€ä¸ªå®ä¾‹çš„ Group)
-        // ä¸ºäº†ç®€åŒ–ï¼Œè¿™é‡Œæš‚æ—¶åªå¤„ç†æ£€æµ‹åˆ°çš?Instanced Groups
-        // å®é™…é¡¹ç›®ä¸­åº”è¯¥æŠŠæ‰€æœ?Mesh éƒ½çº³å…?LOD ç®¡ç†
+        // TODO: ?¤„ç† Non-Instanced Meshes (ä?Ÿ??ä???§†ä¸????œ‰ä¸€ä¸???ä?‹çš„ Group)
+        // ä¸?ä?†ç?€?Œ–??Œ??™é‡Œ?š‚?—????¤„ç†??€??‹?ˆ°çš?Instanced Groups
+        // ??é™…é??ç›?ä¸­??”????ŠŠ?‰€?œ?Mesh éƒ?ç???…?LOD ç??ç†
 
         return result;
     }
 
     // --- LOD4: Family Clustering ---
-    LODLevelResult InstancingLODManager::buildLOD4(const std::vector<ExtendedMeshInfo>& lod5Meshes) {
+    LODLevelResult InstancingLODManager::buildLOD4(const std::vector<ExtendedMeshInfo>& lod5Meshes,
+        const std::vector<LoadedGltfModel>& loadedModels) {
         LODLevelResult result;
         result.level = 4;
-        result.geometricError = 0.0; // å°†è®¡ç®—æœ€å¤§è¯¯å·?
+        result.geometricError = 0.0; // ?°†???ç?—?œ€?¤§??????
 
         // 1. Group by Family
         std::map<std::string, std::vector<const ExtendedMeshInfo*>> familyGroups;
@@ -142,17 +145,17 @@ namespace GltfInstancing {
         for (auto& [family, group] : familyGroups) {
             if (group.empty()) continue;
 
-            // å¦‚æœåªæœ‰ä¸€ä¸ªï¼Œç›´æ¥ä¿ç•™
+            // ??‚?œ???œ‰ä¸€ä¸???Œç›´??ä?ç•™
             if (group.size() == 1) {
                 result.nodes.push_back(*group[0]);
                 continue;
             }
 
-            // å‡ ä½•å­èšç±?(Geometric Sub-clustering)
-            // å³ä½¿ Family ç›¸åŒï¼Œå¦‚æœå°ºå¯¸å·®å¼‚å¤ªå¤§ï¼Œä¹Ÿä¸èƒ½åˆå¹?
+            // ?‡ ä?•?­?šç??(Geometric Sub-clustering)
+            // ??ä?? Family ç›¸?Œ??Œ??‚?œ?°???¸?????‚?¤??¤§??Œä?Ÿä¸?ƒ??ˆ???
             std::vector<std::vector<const ExtendedMeshInfo*>> subClusters;
             
-            // ç®€å•çš„è´ªå¿ƒèšç±»: å–ç¬¬ä¸€ä¸ªä½œä¸ºç§å­ï¼Œæ‰¾æ‰€æœ‰ç›¸ä¼¼çš„ï¼›å‰©ä¸‹çš„å†å–ç¬¬ä¸€ä¸?..
+            // ç?€?•çš„?´???ƒ?šç??: ?–ç??ä¸€ä¸?ä?œä¸?ç§?­??Œ?‰??‰€?œ‰ç›¸ä??çš„??›?‰?ä¸‹çš„?†?–ç??ä¸€ä¸?..
             std::vector<bool> processed(group.size(), false);
             for (size_t i = 0; i < group.size(); ++i) {
                 if (processed[i]) continue;
@@ -161,14 +164,43 @@ namespace GltfInstancing {
                 currentCluster.push_back(group[i]);
                 processed[i] = true;
 
+                double threshold = (_config.similarityThresholdsPerLevel.size() >= 1) ? _config.similarityThresholdsPerLevel[0] : 0.90;
+                const auto* repExt = group[i];
+                bool useHausdorff = (repExt->sourceModelIndex >= 0 && static_cast<size_t>(repExt->sourceModelIndex) < loadedModels.size());
                 double baseVol = group[i]->volume;
                 
                 for (size_t j = i + 1; j < group.size(); ++j) {
                     if (processed[j]) continue;
 
-                    // æ£€æŸ¥ä½“ç§?å°ºå¯¸å·®å¼‚
-                    double volDiff = std::abs(group[j]->volume - baseVol) / (baseVol + 1e-6);
-                    if (volDiff < _config.lod4_sizeTolerance) { // e.g. 5%
+                    // ??€?Ÿ?ä?“ç§??°???¸?????‚
+                    bool merge = false;
+                    if (useHausdorff) {
+                        const auto* candExt = group[j];
+                        if (candExt->sourceModelIndex >= 0 && static_cast<size_t>(candExt->sourceModelIndex) < loadedModels.size()) {
+                            const auto& repModel = loadedModels[repExt->sourceModelIndex];
+                            const auto& repMesh = repModel.model.meshes[repExt->sourceMeshIndex];
+                            const auto& candModel = loadedModels[candExt->sourceModelIndex];
+                            const auto& candMesh = candModel.model.meshes[candExt->sourceMeshIndex];
+                            if (_config.materialFilterMode == "hash") {
+                                if (getMeshMaterialHash(candModel.model, candMesh) == getMeshMaterialHash(repModel.model, repMesh)) {
+                                    double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints);
+                                    merge = (sim >= 0 && sim >= threshold);
+                                }
+                            } else if (_config.materialFilterMode == "index") {
+                                if (getMeshMaterialIndex(candModel.model, candMesh) == getMeshMaterialIndex(repModel.model, repMesh)) {
+                                    double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints);
+                                    merge = (sim >= 0 && sim >= threshold);
+                                }
+                            } else {
+                                double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints);
+                                merge = (sim >= 0 && sim >= threshold);
+                            }
+                        }
+                    } else {
+                        double volDiff = std::abs(group[j]->volume - baseVol) / (baseVol + 1e-6);
+                        merge = (volDiff < _config.lod4_sizeTolerance);
+                    }
+                    if (merge) {
                         currentCluster.push_back(group[j]);
                         processed[j] = true;
                     }
@@ -176,20 +208,20 @@ namespace GltfInstancing {
                 subClusters.push_back(currentCluster);
             }
 
-            // å¯¹æ¯ä¸ªå­èšç±»ç”Ÿæˆä»£è¡¨
+            // ?????ä¸??­?šç??ç”Ÿ?ˆä????¨
             for (const auto& cluster : subClusters) {
-                // ç­–ç•¥ 0: æ‰¾ä½“ç§¯æœ€æ¥è¿‘å¹³å‡å€¼çš„ (Representative)
+                // ç­–ç•? 0: ?‰?ä?“ç§??œ€????‘????‡?€?çš„ (Representative)
                 const ExtendedMeshInfo* rep = findRepresentative(cluster, 0);
                 
-                ExtendedMeshInfo newNode = *rep; // å¤åˆ¶ä»£è¡¨çš„ä¿¡æ?
-                newNode.instances.clear(); // æ¸…ç©ºå®ä¾‹ï¼Œå‡†å¤‡åˆå¹?
+                ExtendedMeshInfo newNode = *rep; // ?¤?ˆ?ä????¨çš„ä????
+                newNode.instances.clear(); // ?¸…ç????ä?‹??Œ?‡†?¤‡?ˆ???
 
-                // åˆå¹¶æ‰€æœ‰æˆå‘˜çš„å®ä¾‹
+                // ?ˆ????‰€?œ‰?ˆ?‘˜çš„??ä?‹
                 double maxErrorInCluster = 0.0;
                 for (const auto* member : cluster) {
                     newNode.instances.insert(newNode.instances.end(), member->instances.begin(), member->instances.end());
                     
-                    // è®¡ç®—è¯¯å·®
+                    // ???ç?—??????
                     double err = calculateGeometricError(*member, *rep);
                     if (err > maxErrorInCluster) maxErrorInCluster = err;
                 }
@@ -206,7 +238,8 @@ namespace GltfInstancing {
     }
 
     // --- LOD3: Category Clustering ---
-    LODLevelResult InstancingLODManager::buildLOD3(const std::vector<ExtendedMeshInfo>& lod4Meshes) {
+    LODLevelResult InstancingLODManager::buildLOD3(const std::vector<ExtendedMeshInfo>& lod4Meshes,
+        const std::vector<LoadedGltfModel>& loadedModels) {
         LODLevelResult result;
         result.level = 3;
         result.geometricError = 0.0;
@@ -216,7 +249,7 @@ namespace GltfInstancing {
         for (const auto& mesh : lod4Meshes) {
             std::string key = mesh.semantic.category;
              if (key.empty() || key == "Unknown") {
-                // æ— æ³•èšç±»çš„å•ç‹¬å¤„ç?
+                // ?— ??•?šç??çš„?•ç‹??¤„ç?
                 categoryGroups["__UNIQUE__" + std::to_string(mesh.sourceModelIndex)].push_back(&mesh);
             } else {
                 categoryGroups[key].push_back(&mesh);
@@ -225,8 +258,8 @@ namespace GltfInstancing {
 
         // 2. Process
         for (auto& [cat, group] : categoryGroups) {
-            // ç±»ä¼¼ LOD4ï¼Œä½†ä½¿ç”¨ Aspect Ratio åˆ¤å®š
-             // ç®€å•çš„è´ªå¿ƒèšç±»
+            // ç??ä?? LOD4??Œä?†ä??ç”¨ Aspect Ratio ?ˆ¤??š
+             // ç?€?•çš„?´???ƒ?šç??
             std::vector<bool> processed(group.size(), false);
             for (size_t i = 0; i < group.size(); ++i) {
                 if (processed[i]) continue;
@@ -235,19 +268,47 @@ namespace GltfInstancing {
                 currentCluster.push_back(group[i]);
                 processed[i] = true;
 
+                double threshold = (_config.similarityThresholdsPerLevel.size() >= 2) ? _config.similarityThresholdsPerLevel[1] : 0.85;
+                const auto* repExt = group[i];
+                bool useHausdorff = (repExt->sourceModelIndex >= 0 && static_cast<size_t>(repExt->sourceModelIndex) < loadedModels.size());
                 double baseRatio = getAspectRatio(group[i]->aabb);
                 
                 for (size_t j = i + 1; j < group.size(); ++j) {
                     if (processed[j]) continue;
-
-                    double ratio = getAspectRatio(group[j]->aabb);
-                    if (std::abs(ratio - baseRatio) < _config.lod3_aspectRatioTolerance) {
+                    bool merge = false;
+                    if (useHausdorff) {
+                        const auto* candExt = group[j];
+                        if (candExt->sourceModelIndex >= 0 && static_cast<size_t>(candExt->sourceModelIndex) < loadedModels.size()) {
+                            const auto& repModel = loadedModels[repExt->sourceModelIndex];
+                            const auto& repMesh = repModel.model.meshes[repExt->sourceMeshIndex];
+                            const auto& candModel = loadedModels[candExt->sourceModelIndex];
+                            const auto& candMesh = candModel.model.meshes[candExt->sourceMeshIndex];
+                            if (_config.materialFilterMode == "hash") {
+                                if (getMeshMaterialHash(candModel.model, candMesh) == getMeshMaterialHash(repModel.model, repMesh)) {
+                                    double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints);
+                                    merge = (sim >= 0 && sim >= threshold);
+                                }
+                            } else if (_config.materialFilterMode == "index") {
+                                if (getMeshMaterialIndex(candModel.model, candMesh) == getMeshMaterialIndex(repModel.model, repMesh)) {
+                                    double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints);
+                                    merge = (sim >= 0 && sim >= threshold);
+                                }
+                            } else {
+                                double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints);
+                                merge = (sim >= 0 && sim >= threshold);
+                            }
+                        }
+                    } else {
+                        double ratio = getAspectRatio(group[j]->aabb);
+                        merge = (std::abs(ratio - baseRatio) < _config.lod3_aspectRatioTolerance);
+                    }
+                    if (merge) {
                         currentCluster.push_back(group[j]);
                         processed[j] = true;
                     }
                 }
                 
-                // ç­–ç•¥ 1: æ‰¾é¡¶ç‚¹æ•°æœ€å°‘çš„ (Simplest)
+                // ç­–ç•? 1: ?‰?é??ç‚??•°?œ€?°‘çš„ (Simplest)
                 const ExtendedMeshInfo* rep = findRepresentative(currentCluster, 1);
                 
                 ExtendedMeshInfo newNode = *rep;
@@ -267,19 +328,21 @@ namespace GltfInstancing {
             }
         }
         
-        // ç¡®ä¿ LOD3 è¯¯å·®ä¸å°äº?LOD4 (å•è°ƒæ€?
-        // å®é™…åº”ç”¨ä¸­é€šå¸¸ä¸éœ€è¦å¼ºåˆ¶ï¼Œå› ä¸º Tileset ç»“æ„ä¼šå¤„ç?
+        // ç??ä? LOD3 ??????ä¸?°ä??LOD4 (?•?°ƒ?€?
+        // ??é™…??”ç”¨ä¸­é€š?¸¸ä¸éœ€??????ˆ???Œ?› ä¸? Tileset ç?“?„ä?š?¤„ç?
         return result;
     }
 
     // --- LOD2: Abstract Level ---
     LODLevelResult InstancingLODManager::buildLOD2(const std::vector<ExtendedMeshInfo>& lod3Meshes) {
-        // æš‚æ—¶ç®€åŒ–ï¼šç›´æ¥å¤åˆ¶ LOD3ï¼Œæˆ–è€…åœ¨è¿™é‡Œåº”ç”¨æ›´æ¿€è¿›çš„ Category åˆå¹¶
-        // æ¯”å¦‚å°?"Office Chair" å’?"Dining Chair" åˆå¹¶ä¸?"Chair"
-        // ç›®å‰æ²¡æœ‰æ˜ å°„è¡¨ï¼Œæš‚æ—¶é€ä¼ ï¼Œä½†å¢åŠ è¯¯å·®é˜ˆå€?
-        LODLevelResult result = buildLOD3(lod3Meshes); // å¤ç”¨é€»è¾‘ï¼Œä½†å› ä¸ºè¾“å…¥å·²ç»æ˜?LOD3ï¼Œé€šå¸¸ä¸ä¼šæœ‰å¤ªå¤šå˜åŒ–é™¤éæ˜ å°„è¡¨å­˜åœ¨
+        // ?š‚?—?ç?€?Œ–??šç›´???¤?ˆ? LOD3??Œ?ˆ–?€…?œ¨??™é‡Œ??”ç”¨?›´??€??›çš„ Category ?ˆ???
+        // ??”??‚?°?"Office Chair" ?’?"Dining Chair" ?ˆ???ä¸?"Chair"
+        // ç›??‰????œ‰?˜ ?°„??¨??Œ?š‚?—?é€ä? ??Œä?†???Š ??????é˜ˆ?€?
+        LODLevelResult result;
         result.level = 2;
-        result.geometricError *= 2.0; // ç®€å•æ”¾å¤§è¯¯å·?
+        result.nodes = lod3Meshes;
+        result.geometricError = 200.0; // ?¤ç”¨é€???‘??Œä?†?› ä¸???“?…????ç??˜?LOD3??Œé€š?¸¸ä¸ä?š?œ‰?¤??¤š?˜?Œ–é™¤é?˜ ?°„??¨?­˜?œ¨
+        result.geometricError *= 2.0; // ç?€?•?”??¤§??????
         return result;
     }
 
@@ -287,34 +350,34 @@ namespace GltfInstancing {
     LODLevelResult InstancingLODManager::buildLOD1(const std::vector<ExtendedMeshInfo>& lod2Meshes) {
         LODLevelResult result;
         result.level = 1;
-        result.geometricError = 1000.0; // å¾ˆå¤§
+        result.geometricError = 1000.0; // ??ˆ?¤§
 
-        // åˆ›å»ºä¸€ä¸ªç‰¹æ®Šçš„ Proxy Mesh Info
-        // åœ¨å®é™?GLB å†™å…¥æ—¶ï¼Œæˆ‘ä»¬éœ€è¦è¯†åˆ«è¿™ä¸ªæ ‡å¿—ï¼Œå†™å…¥ä¸€ä¸?Unit Cube
+        // ?ˆ›???ä¸€ä¸?ç‰???Šçš„ Proxy Mesh Info
+        // ?œ¨??é™?GLB ?†™?…??—???Œ?ˆ‘ä??éœ€????†?ˆ???™ä¸?? ‡??—??Œ?†™?…?ä¸€ä¸?Unit Cube
         ExtendedMeshInfo proxyInfo;
         proxyInfo.meshName = "LOD1_Proxy_Cube";
-        proxyInfo.sourceModelIndex = -1; // -1 è¡¨ç¤ºç”Ÿæˆçš?Proxy
+        proxyInfo.sourceModelIndex = -1; // -1 ??¨ç¤?ç”Ÿ?ˆçš?Proxy
         proxyInfo.sourceMeshIndex = -1;
         
-        // æ”¶é›†æ‰€æœ‰å®ä¾‹ï¼Œå¹¶ä¿®æ”¹å®ƒä»¬çš„çŸ©é˜µ
+        // ?”?é›†?‰€?œ‰??ä?‹??Œ???ä???”???ƒä??çš„çŸ?é˜?
         for (const auto& mesh : lod2Meshes) {
-            // è®¡ç®—è¯?Mesh çš?AABB å°ºå¯¸å’Œä¸­å¿ƒåç§?
+            // ???ç?—???Mesh çš?AABB ?°???¸?’Œä¸­??ƒ?ç§?
             glm::dvec3 size = mesh.aabb.max - mesh.aabb.min;
             glm::dvec3 center = (mesh.aabb.max + mesh.aabb.min) * 0.5;
 
             for (const auto& inst : mesh.instances) {
                 MeshInstanceInfo newInst = inst;
                 
-                // å˜æ¢é€»è¾‘ï¼?
-                // åŸå§‹çŸ©é˜µ M å°?(0,0,0) å˜æ¢åˆ°ä¸–ç•Œä½ç½?P
-                // æˆ‘ä»¬éœ€è¦å°† Unit Cube (å‡è®¾ä¸­å¿ƒåœ?0, è¾¹é•¿ 1) å˜æ¢åˆ?Mesh çš?AABB
+                // ?˜??é€???‘???
+                // ?Ÿ?§‹çŸ?é˜? M ?°?(0,0,0) ?˜???ˆ°ä¸–ç•Œä?ç??P
+                // ?ˆ‘ä??éœ€???°† Unit Cube (?‡???ä¸­??ƒ?œ?0, ???é•? 1) ?˜???ˆ?Mesh çš?AABB
                 
-                // 1. åº”ç”¨åŸå§‹å˜æ¢
+                // 1. ??”ç”¨?Ÿ?§‹?˜??
                 glm::dmat4 originalMat = inst.transform.toMat4();
                 
-                // 2. åœ¨å±€éƒ¨ç©ºé—´ç¼©æ”¾å’Œä½ç§»
+                // 2. ?œ¨??€éƒ¨ç??é—´ç???”??’Œä?ç§?
                 // Cube (1x1x1) -> Scale(size) -> Translate(center) -> OriginalTransform
-                // æ³¨æ„ï¼šè¿™é‡Œçš„ center æ˜?Mesh åœ¨å…¶è‡ªèº«æ¨¡å‹ç©ºé—´ä¸­çš„ AABB ä¸­å¿ƒ
+                // ??¨?„??š??™é‡Œçš„ center ?˜?Mesh ?œ¨?…??‡?????¨??‹ç??é—´ä¸­çš„ AABB ä¸­??ƒ
                 
                 glm::dmat4 localFix = glm::translate(glm::dmat4(1.0), center) * glm::scale(glm::dmat4(1.0), size);
                 
@@ -332,8 +395,8 @@ namespace GltfInstancing {
     // --- Helpers ---
 
     double InstancingLODManager::calculateGeometricError(const ExtendedMeshInfo& original, const ExtendedMeshInfo& representative) {
-        // ç®€åŒ–è®¡ç®—ï¼šå¯¹è§’çº¿é•¿åº¦å·® + AABB ä¸­å¿ƒè·ç¦»
-        // æ›´ç²¾ç¡®çš„åº”è¯¥æ˜?Hausdorffï¼Œä½†è¿™é‡Œç”?AABB ä¼°ç®—
+        // ç?€?Œ–???ç?—??š????§’ç??é•??????? + AABB ä¸­??ƒ??ç??
+        // ?›´ç??ç??çš„??”????˜?Hausdorff??Œä?†??™é‡Œç”?AABB ä?°ç?—
         double diagDiff = std::abs(original.diagonal - representative.diagonal);
         
         glm::dvec3 c1 = (original.aabb.max + original.aabb.min) * 0.5;
@@ -381,10 +444,10 @@ namespace GltfInstancing {
 
     double InstancingLODManager::getAspectRatio(const BoundingBox& box) {
         glm::dvec3 size = box.max - box.min;
-        // æ’åº x, y, z
+        // ?’?? x, y, z
         std::vector<double> dims = { size.x, size.y, size.z };
         std::sort(dims.begin(), dims.end());
-        // é•?/ å®?(å¿½ç•¥é«˜åº¦/åšåº¦)
+        // é•?/ ???(???ç•?é?˜???/?š???)
         if (dims[1] < 1e-6) return 1.0;
         return dims[2] / dims[1];
     }

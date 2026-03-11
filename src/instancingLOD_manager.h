@@ -51,9 +51,13 @@ namespace GltfInstancing {
         bool enableSemanticCheck = true;
         bool enableGeometricCheck = true;
         
-        // 几何相似度阈值
-        double lod4_sizeTolerance = 0.05; // 5% 尺寸差异
-        double lod3_aspectRatioTolerance = 0.20; // 20% 长宽比差异
+        // 每级 LOD 的 Hausdorff 相似度阈值，LOD 越粗糙越宽松。index 0=LOD4, 1=LOD3, 2=LOD2, 3=LOD1
+        std::vector<double> similarityThresholdsPerLevel = { 0.90, 0.85, 0.80, 0.75 };
+        size_t hausdorffMaxSamplePoints = 2000;
+        int instanceLimit = 2;
+        std::string materialFilterMode = "none"; // "none", "hash", "index"
+        double lod4_sizeTolerance = 0.05;  // 仅当 similarityThresholdsPerLevel 为空时用作体积聚类回退
+        double lod3_aspectRatioTolerance = 0.20;
     };
 
     class InstancingLODManager {
@@ -82,11 +86,13 @@ namespace GltfInstancing {
             const SemanticParser& semanticParser
         );
 
-        // 2. 构建 LOD4 (Variant Level): 基于 Family + 几何尺寸聚类
-        LODLevelResult buildLOD4(const std::vector<ExtendedMeshInfo>& lod5Meshes);
+        // 2. 构建 LOD4 (Variant Level): 基于 Family + Hausdorff 几何相似度聚类
+        LODLevelResult buildLOD4(const std::vector<ExtendedMeshInfo>& lod5Meshes,
+            const std::vector<LoadedGltfModel>& loadedModels);
 
-        // 3. 构建 LOD3 (Class Level): 基于 Category + 几何形状(长宽比)聚类
-        LODLevelResult buildLOD3(const std::vector<ExtendedMeshInfo>& lod4Meshes);
+        // 3. 构建 LOD3 (Class Level): 基于 Category + Hausdorff 几何相似度聚类
+        LODLevelResult buildLOD3(const std::vector<ExtendedMeshInfo>& lod4Meshes,
+            const std::vector<LoadedGltfModel>& loadedModels);
 
         // 4. 构建 LOD2 (Abstract Level): 基于抽象类别 (需映射) + 极简模型
         LODLevelResult buildLOD2(const std::vector<ExtendedMeshInfo>& lod3Meshes);

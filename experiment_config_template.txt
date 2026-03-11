@@ -7,10 +7,13 @@
 # 基础配置
 # -----------------------------------------------------------------------------
 input_directory = D:/Data/BIM/住宅标准层
-tolerance = 0.05
 instance_limit = 3
-normal_tolerance = 0.1
 allow_non_uniform_scale_instancing = true
+similarity_thresholds = 0.95,0.90,0.85,0.80,0.75
+
+# 可选：merge_all_glb = false   # 是否合并所有 GLB 后再检测
+# 可选：mesh_segmentation = false   # 是否启用网格分割（为 Quadtree 生成按空间分割的 GLB）
+# 可选：csv_directory =   # 构件 ID 与 mesh 映射的 CSV 目录
 
 # 实例化检测模式: semantic_material_geometric (语义+材质+几何综合判断)
 # instancing_detection_mode = semantic_material_geometric
@@ -42,20 +45,20 @@ use_symbolic_links = false
 # -----------------------------------------------------------------------------
 # 运行实验1时，建议分别使用以下配置运行3次：
 
-# 配置A - Strict（严格）
-# tolerance = 0.00
+# 配置A - Strict（严格，高相似度阈值）
+# similarity_thresholds = 0.98,0.95,0.92,0.88,0.85
 # instance_limit = 5
-# experiment_strategy_id = 01_Strict_0.00m
+# experiment_strategy_id = 01_Strict
 
 # 配置B - Moderate（中等）
-# tolerance = 0.05
+# similarity_thresholds = 0.95,0.90,0.85,0.80,0.75
 # instance_limit = 3
-# experiment_strategy_id = 02_Moderate_0.05m
+# experiment_strategy_id = 02_Moderate
 
-# 配置C - Lenient（宽松）
-# tolerance = 0.10
+# 配置C - Lenient（宽松，低相似度阈值）
+# similarity_thresholds = 0.90,0.85,0.80,0.75,0.70
 # instance_limit = 2
-# experiment_strategy_id = 03_Lenient_0.10m
+# experiment_strategy_id = 03_Lenient
 
 # 数据集名称 - 用于组织输出文件夹
 experiment_dataset_name = 住宅标准层
@@ -72,23 +75,48 @@ experiment_dataset_name = 多楼层建筑
 # -----------------------------------------------------------------------------
 # LOD配置
 # -----------------------------------------------------------------------------
+# --- Instance LOD（实例化 LOD）---
 enable_instance_lod_generation = true
 lod_level_count = 5
+target_screen_sse = 16.0
 enable_semantic_check = true
+enable_geometric_check = true
+# 每级 LOD 的 Hausdorff 相似度阈值，LOD5→LOD1 逐步放宽，逗号分隔
+instance_lod_similarity_thresholds = 0.95,0.90,0.85,0.80,0.75
+instance_lod_instance_limit = -1
+instance_lod_material_filter_mode = none
 lod4_size_tolerance = 0.05
 lod3_aspect_ratio_tolerance = 0.20
+
+# --- Non-instanced LOD（非实例化 LOD）---
+enable_non_instanced_lod_generation = false
+non_instanced_lod_level_count = 3
+non_instanced_lod_ratio = 0.5
+non_instanced_min_simplify_index_count = 300
+enable_non_instanced_lod_instancing = false
+# 非实例化 LOD 后处理实例化检测的每级相似度阈值，越粗糙越宽松
+non_instanced_lod_similarity_thresholds = 0.95,0.90,0.85
 
 # -----------------------------------------------------------------------------
 # HLOD配置
 # -----------------------------------------------------------------------------
 enable_quadtree = true
 quadtree_max_depth = 6
-quadtree_max_objs = 50
+quadtree_max_objects_per_tile = 50
 
 # HLOD实例化检测参数（可与主流程不同）
-hlod_tolerance = 0.05
 hlod_instance_limit = 3
 hlod_allow_non_uniform_scale_instancing = true
+# HLOD 每层级相似度阈值，父 tile 越粗越宽松，逗号分隔
+hlod_similarity_thresholds = 0.70,0.65,0.60,0.55,0.50
+
+# 实验1策略 ID（运行实验1时取消注释并修改）
+# experiment_strategy_id = 02_Moderate
+
+# 可选：实验文件夹名称（一般无需修改）
+# experiment1_name = experiment1_baseline_comparison
+# experiment2_name = experiment2_lod_comparison
+# experiment3_name = experiment3_mixed_hlod
 
 # -----------------------------------------------------------------------------
 # 输出目录
@@ -101,7 +129,7 @@ output_directory = D:/Experiments/01_InstancingStrategy/dataset_住宅标准层/
 #
 # 1. 实验1（实例化检测策略对比）使用方法：
 #    a) 创建3个配置文件，分别对应Strict/Moderate/Lenient
-#    b) 修改experiment_strategy_id和tolerance参数
+#    b) 修改experiment_strategy_id和similarity_thresholds参数
 #    c) 分别运行3次，输出将自动组织到对应文件夹
 #    d) 使用scripts/generate_comparison.py生成对比报告
 #
