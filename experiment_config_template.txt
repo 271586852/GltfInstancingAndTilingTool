@@ -12,11 +12,10 @@ instance_limit = 3
 normal_tolerance = 0.1
 allow_non_uniform_scale_instancing = true
 
-# 实例化检测模式: legacy (哈希+包围盒) 或 semantic_hausdorff (语义哈希+豪斯多夫相似度)
-# instancing_detection_mode = legacy
-# instancing_detection_mode = semantic_hausdorff
+# 实例化检测模式: semantic_material_geometric (语义+材质+几何综合判断)
+# instancing_detection_mode = semantic_material_geometric
 
-# semantic_hausdorff 模式专用参数:
+# semantic_material_geometric 模式专用参数:
 # semantic_hash_fields = category,family,type
 # similarity_thresholds = 0.95,0.90,0.85,0.80,0.75
 # hlod_similarity_threshold = 0.70

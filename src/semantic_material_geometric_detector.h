@@ -1,5 +1,5 @@
-#ifndef SEMANTIC_HAUSDORFF_DETECTOR_H
-#define SEMANTIC_HAUSDORFF_DETECTOR_H
+#ifndef SEMANTIC_MATERIAL_GEOMETRIC_DETECTOR_H
+#define SEMANTIC_MATERIAL_GEOMETRIC_DETECTOR_H
 
 #include "utilities.h"
 #include "glb_reader.h"
@@ -15,15 +15,14 @@
 
 namespace GltfInstancing {
 
-    // Instancing detector using semantic hash + Hausdorff similarity.
-    // Isolated from legacy InstancingDetector; used when instancing_detection_mode = "semantic_hausdorff".
-    class SemanticHausdorffInstancingDetector {
+    // Instancing detector: semantic grouping + optional material filter + geometric (Hausdorff) similarity.
+    class SemanticMaterialGeometricDetector {
     public:
         // semanticHashFields: comma-separated, e.g. "category,family,type"
         // similarityThreshold: threshold for Hausdorff similarity (0..1)
         // instanceLimit: minimum instances to form a group
         // materialFilterMode: "none", "hash", or "index" - filter Hausdorff comparison by material
-        SemanticHausdorffInstancingDetector(
+        SemanticMaterialGeometricDetector(
             const SemanticParser* semanticParser,
             const std::string& semanticHashFields,
             double similarityThreshold,
@@ -55,4 +54,4 @@ namespace GltfInstancing {
 
 } // namespace GltfInstancing
 
-#endif // SEMANTIC_HAUSDORFF_DETECTOR_H
+#endif // SEMANTIC_MATERIAL_GEOMETRIC_DETECTOR_H

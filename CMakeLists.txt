@@ -58,7 +58,7 @@ set(PROJECT_SOURCES
     src/glb_reader.cpp
     src/hausdorff_similarity.cpp
     src/material_matching.cpp
-    src/semantic_hausdorff_detector.cpp
+    src/semantic_material_geometric_detector.cpp
     src/instancing_result.cpp
     src/glb_writer.cpp
     src/semantic_parser.cpp

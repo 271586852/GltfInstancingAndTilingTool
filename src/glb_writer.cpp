@@ -1,4 +1,4 @@
-﻿#include "glb_writer.h"
+#include "glb_writer.h"
 #include "utilities.h"
 #include <sstream> // For std::ostringstream
 
@@ -982,10 +982,7 @@ namespace GltfInstancing {
                                         }
                                     }
 
-                                    // Only add the extension if attributes were successfully populated
                                     if (!newGpuInstancingExtensionStruct.attributes.empty()) {
-                                        // The if block for originalInstancingJson.count("extras") is removed here.
-                                        
                                         nodeForExportedGlb.extensions["EXT_mesh_gpu_instancing"] = newGpuInstancingExtensionStruct; 
 
                                         // Add to extensionsUsed and extensionsRequired

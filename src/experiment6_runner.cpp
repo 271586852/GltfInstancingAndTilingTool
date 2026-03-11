@@ -1,7 +1,7 @@
 #include "experiment6_runner.h"
 #include "glb_reader.h"
 #include "instancing_result.h"
-#include "semantic_hausdorff_detector.h"
+#include "semantic_material_geometric_detector.h"
 #include "glb_writer.h"
 #include "tileset_writer.h"
 #include "utilities.h"
@@ -460,7 +460,7 @@ void processSingleGlbFullPipeline(
         return;
     }
 
-    // Detect instancing (legacy bbox logic removed; semantic_hausdorff only)
+    // Detect instancing
     GltfInstancing::InstancingDetectionResult detectionResult;
     {
         GltfInstancing::SemanticParser semanticParser;
@@ -471,7 +471,7 @@ void processSingleGlbFullPipeline(
                 semanticParser.parse(baseConfig.semanticDataPath);
         }
         double thresh = baseConfig.similarityThresholdsParsed.empty() ? 0.95 : baseConfig.similarityThresholdsParsed[0];
-        GltfInstancing::SemanticHausdorffInstancingDetector detector(
+        GltfInstancing::SemanticMaterialGeometricDetector detector(
             &semanticParser, baseConfig.semanticHashFields, thresh, baseConfig.instanceLimit, baseConfig.hausdorffMaxSamplePoints, baseConfig.allowUnknownCrossMeshClustering, baseConfig.materialFilterMode);
         detectionResult = detector.detect(loadedModels);
     }
@@ -642,7 +642,6 @@ void runExperiment6(
         if (!allLoadedModels.empty()) {
             GltfInstancing::InstancingDetectionResult detectionResult;
             {
-                // legacy bbox logic removed; semantic_hausdorff only
                 GltfInstancing::SemanticParser semanticParser;
                 if (!config.semanticDataPath.empty() && std::filesystem::exists(config.semanticDataPath)) {
                     if (std::filesystem::is_directory(config.semanticDataPath)) {
@@ -653,7 +652,7 @@ void runExperiment6(
                     }
                 }
                 double thresh = config.similarityThresholdsParsed.empty() ? 0.95 : config.similarityThresholdsParsed[0];
-                GltfInstancing::SemanticHausdorffInstancingDetector detector(
+                GltfInstancing::SemanticMaterialGeometricDetector detector(
                     &semanticParser, config.semanticHashFields, thresh, config.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering, config.materialFilterMode);
                 detectionResult = detector.detect(allLoadedModels);
             }

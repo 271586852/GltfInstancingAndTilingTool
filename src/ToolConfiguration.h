@@ -19,9 +19,8 @@ struct ToolConfiguration {
     bool csvDirectorySet = false;
     bool allowNonUniformScaleInstancing = false;
 
-    // --- Semantic + Hausdorff Instancing Mode (Alternative to legacy hash-based) ---
-    // instancing_detection_mode: "legacy" (hash+bbox) or "semantic_hausdorff" (semantic hash + Hausdorff similarity)
-    std::string instancingDetectionMode = "legacy";
+    // --- Semantic + Hausdorff Instancing Mode ---
+    std::string instancingDetectionMode = "semantic_material_geometric";
     // semantic_hash_fields: comma-separated, e.g. "category,family,type" (maps to Element_Category, Element_Family, Element_Type)
     std::string semanticHashFields = "category,family,type";
     // similarity_thresholds: per-LOD thresholds, comma-separated, e.g. "0.95,0.90,0.85,0.80,0.75" (LOD0=finest to LOD4=coarsest)

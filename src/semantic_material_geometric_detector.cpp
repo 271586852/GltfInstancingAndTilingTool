@@ -1,4 +1,4 @@
-#include "semantic_hausdorff_detector.h"
+#include "semantic_material_geometric_detector.h"
 #include "utilities.h"
 #include <CesiumGltf/ExtensionExtMeshGpuInstancing.h>
 #include <CesiumGltf/AccessorView.h>
@@ -20,7 +20,7 @@ namespace GltfInstancing {
         return out;
     }
 
-    SemanticHausdorffInstancingDetector::SemanticHausdorffInstancingDetector(
+    SemanticMaterialGeometricDetector::SemanticMaterialGeometricDetector(
         const SemanticParser* semanticParser,
         const std::string& semanticHashFields,
         double similarityThreshold,
@@ -41,7 +41,7 @@ namespace GltfInstancing {
         }
     }
 
-    std::string SemanticHausdorffInstancingDetector::buildSemanticHashKey(const std::optional<SemanticInfo>& info) const {
+    std::string SemanticMaterialGeometricDetector::buildSemanticHashKey(const std::optional<SemanticInfo>& info) const {
         if (!info.has_value()) return "unknown";
         std::string key;
         for (const auto& field : _semanticHashFieldNames) {
@@ -52,7 +52,7 @@ namespace GltfInstancing {
         return key.empty() ? "unknown" : key;
     }
 
-    void SemanticHausdorffInstancingDetector::traverseNode(
+    void SemanticMaterialGeometricDetector::traverseNode(
         const LoadedGltfModel& loadedGltf,
         int32_t modelIndexInLoadedModels,
         int32_t nodeIndex,
@@ -139,9 +139,9 @@ namespace GltfInstancing {
         parentNodeIndicesChainForChildren.pop_back();
     }
 
-    InstancingDetectionResult SemanticHausdorffInstancingDetector::detect(const std::vector<LoadedGltfModel>& loadedModels) {
+    InstancingDetectionResult SemanticMaterialGeometricDetector::detect(const std::vector<LoadedGltfModel>& loadedModels) {
         InstancingDetectionResult result;
-        GltfInstancing::logInfo("[Hausdorff] 开始检测: 遍历 " + std::to_string(loadedModels.size()) + " 个模型收集语义组...");
+        GltfInstancing::logInfo("[实例检测] 开始: 遍历 " + std::to_string(loadedModels.size()) + " 个模型收集语义组...");
         std::map<std::string, std::vector<std::pair<std::pair<int32_t, int32_t>, MeshInstanceInfo>>> semanticGroups;
 
         std::map<std::string, int> fileHashToRepId;
@@ -171,20 +171,20 @@ namespace GltfInstancing {
         size_t totalInstances = 0;
         for (const auto& [k, v] : semanticGroups) totalInstances += v.size();
         const size_t totalGroups = semanticGroups.size();
-        GltfInstancing::logInfo("[Hausdorff] 开始聚类: " + std::to_string(totalGroups) + " 个语义组, "
-            + std::to_string(totalInstances) + " 个实例, 正在进行相似度比较");
+        GltfInstancing::logInfo("[实例检测] 聚类: " + std::to_string(totalGroups) + " 个语义组, "
+            + std::to_string(totalInstances) + " 个实例, 进行语义+材质+几何比较");
 
         size_t groupIdx = 0;
         const size_t logInterval = 5000;
         for (auto& [semanticKey, instances] : semanticGroups) {
             ++groupIdx;
             if (instances.empty()) {
-                GltfInstancing::logInfo("[Hausdorff] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + " (无实例, 跳过).");
+                GltfInstancing::logInfo("[实例检测] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + " (无实例, 跳过).");
                 continue;
             }
             const bool unknownNoCrossMesh = (semanticKey == "unknown" && !_allowUnknownCrossMeshClustering);
 
-            GltfInstancing::logInfo("[Hausdorff] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups)
+            GltfInstancing::logInfo("[实例检测] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups)
                 + " (本组 " + std::to_string(instances.size()) + " 个实例)...");
 
             std::map<std::pair<int32_t, int32_t>, size_t> meshToRepModelMesh;
@@ -219,7 +219,7 @@ namespace GltfInstancing {
                     const CesiumGltf::Mesh& meshCur = cm->model.meshes[inst.originalMeshIndex];
                     const CesiumGltf::Mesh& meshRep = rm->model.meshes[repMesh];
 
-                    // Material filter: skip Hausdorff when materials don't match
+                    // Material filter: skip geometric comparison when materials don't match
                     if (_materialFilterMode == "hash") {
                         if (getMeshMaterialHash(cm->model, meshCur) != getMeshMaterialHash(rm->model, meshRep))
                             continue;
@@ -230,7 +230,7 @@ namespace GltfInstancing {
 
                     double sim = computeMeshSimilarity(cm->model, meshCur, rm->model, meshRep, _hausdorffMaxSamplePoints);
                     if (++similarityCount % logInterval == 0)
-                        GltfInstancing::logInfo("[Hausdorff]  已比较 " + std::to_string(similarityCount) + " 次 (组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + ")");
+                        GltfInstancing::logInfo("[实例检测]  已比较 " + std::to_string(similarityCount) + " 次 (组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + ")");
                     if (sim >= 0 && sim >= _similarityThreshold) {
                         meshToRepModelMesh[key] = r;
                         clusterInstances[r].push_back(inst);
@@ -245,7 +245,7 @@ namespace GltfInstancing {
                 }
             }
 
-            GltfInstancing::logInfo("[Hausdorff] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + " 完成 (本组 " + std::to_string(representatives.size()) + " 个代表).");
+            GltfInstancing::logInfo("[实例检测] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + " 完成 (本组 " + std::to_string(representatives.size()) + " 个代表).");
 
             for (size_t c = 0; c < clusterInstances.size(); ++c) {
                 if (clusterInstances[c].size() < static_cast<size_t>(_instanceLimit)) {
@@ -279,7 +279,7 @@ namespace GltfInstancing {
             }
         }
 
-        GltfInstancing::logInfo("[Hausdorff] 聚类完成: " + std::to_string(result.instancedGroups.size()) + " 个实例组, "
+        GltfInstancing::logInfo("[实例检测] 完成: " + std::to_string(result.instancedGroups.size()) + " 个实例组, "
             + std::to_string(result.nonInstancedMeshes.size()) + " 个非实例 mesh.");
         return result;
     }

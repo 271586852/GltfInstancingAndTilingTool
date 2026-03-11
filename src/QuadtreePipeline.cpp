@@ -6,7 +6,7 @@
 #include "ToolConfiguration.h" 
 #include "NonInstancingLOD_manager.h" 
 #include "instancing_result.h"
-#include "semantic_hausdorff_detector.h"
+#include "semantic_material_geometric_detector.h"
 #include "semantic_parser.h"      
 
 #include <iostream>
@@ -802,7 +802,7 @@ namespace QuadtreePipeline {
         int hlodInstanceLimit = _config.hlodInstanceLimitSet ?
             _config.hlodInstanceLimit : _config.instanceLimit;
 
-        // Detect instancing (legacy bbox logic removed; semantic_hausdorff only)
+        // Detect instancing
         GltfInstancing::InstancingDetectionResult result;
         {
             GltfInstancing::SemanticParser semanticParser;
@@ -815,7 +815,7 @@ namespace QuadtreePipeline {
                     semanticParser.parse(_config.semanticDataPath);
                 }
             }
-            GltfInstancing::SemanticHausdorffInstancingDetector detector(
+            GltfInstancing::SemanticMaterialGeometricDetector detector(
                 &semanticParser,
                 _config.semanticHashFields,
                 _config.hlodSimilarityThreshold,

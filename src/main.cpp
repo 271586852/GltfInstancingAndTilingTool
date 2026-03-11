@@ -1,5 +1,5 @@
 #include "glb_reader.h"
-#include "semantic_hausdorff_detector.h"
+#include "semantic_material_geometric_detector.h"
 #include "glb_writer.h"
 #include "tileset_writer.h"
 #include "utilities.h"
@@ -234,14 +234,7 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                     GltfInstancing::logWarning("Invalid boolean value for 'allow_non_uniform_scale_instancing' in config file (line " + std::to_string(lineNumber) + "): " + value);
                 }
             } else if (key == "instancing_detection_mode") {
-                std::string modeLower = value;
-                std::transform(modeLower.begin(), modeLower.end(), modeLower.begin(), ::tolower);
-                if (modeLower == "semantic_hausdorff") {
-                    config.instancingDetectionMode = "semantic_hausdorff";
-                } else {
-                    GltfInstancing::logWarning("instancing_detection_mode '" + value + "' is not supported anymore. Using 'semantic_hausdorff'.");
-                    config.instancingDetectionMode = "semantic_hausdorff";
-                }
+                config.instancingDetectionMode = "semantic_material_geometric";
             } else if (key == "semantic_hash_fields") {
                 config.semanticHashFields = value;
             } else if (key == "similarity_thresholds") {
@@ -460,8 +453,8 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("  --normal-tolerance <value>:          Tolerance for NORMAL vector comparison. Default: 0.0.");
     GltfInstancing::logInfo("  --merge-all-glb:                     Merge all GLB outputs into a single file per type. Default: false.");
     GltfInstancing::logInfo("  --instance-limit <value>:            Minimum number of instances to form a group. Default: 2.");
-    GltfInstancing::logInfo("  --instancing-detection-mode <mode>:  'semantic_hausdorff' only (legacy bbox logic removed). Default: semantic_hausdorff.");
-    GltfInstancing::logInfo("  --hausdorff-max-sample-points <n>:   Max points per mesh for Hausdorff (semantic_hausdorff). 0 disables sampling. Default: 2000.");
+    GltfInstancing::logInfo("  --instancing-detection-mode <mode>:  semantic_material_geometric (default).");
+    GltfInstancing::logInfo("  --hausdorff-max-sample-points <n>:   Max points per mesh for geometric similarity. 0 disables sampling. Default: 2000.");
     GltfInstancing::logInfo("  --material-filter-mode <mode>:       Material filter for Hausdorff: none, hash, index. Default: none.");
     GltfInstancing::logInfo("  --allow-unknown-cross-mesh-clustering: Allow semantic 'unknown' to cluster across different meshes. Default: false.");
     GltfInstancing::logInfo("  --mesh-segmentation:                 Export each mesh as a separate GLB file. Default: false.");
@@ -674,8 +667,7 @@ void writeAnalysisCsv(const ToolConfiguration& config,
                      // We need to peek into the extension to get count. 
                      // Since we don't have easy access to the exact count without parsing attributes again,
                      // we'll try to find a common accessor count.
-                     // Simpler approach: InstancingDetector does this. 
-                     // But here we just want a rough count.
+                     // Get instance count from any instancing attribute accessor.
                      // Let's iterate attributes map in the extension JSON object if possible, or use Cesium's type.
                      // The ExtensionExtMeshGpuInstancing is a struct.
                      const auto* extData = std::any_cast<CesiumGltf::ExtensionExtMeshGpuInstancing>(&it->second);
@@ -1523,13 +1515,8 @@ int main(int argc, char* argv[]) {
         }
         else if (arg == "--instancing-detection-mode") {
             if (argIndex + 1 < argc) {
-                std::string mode = argv[++argIndex];
-                std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
-                if (mode != "semantic_hausdorff") {
-                    GltfInstancing::logWarning("--instancing-detection-mode only supports 'semantic_hausdorff' now (legacy bbox logic removed). Ignoring: " + mode);
-                }
-                config.instancingDetectionMode = "semantic_hausdorff";
-                GltfInstancing::logDebug("Command-line override: Instancing detection mode: " + config.instancingDetectionMode);
+                ++argIndex;
+                config.instancingDetectionMode = "semantic_material_geometric";
             } else {
                 GltfInstancing::logError("--instancing-detection-mode requires a value."); printUsage(argv[0]); return 1;
             }
@@ -1626,7 +1613,7 @@ int main(int argc, char* argv[]) {
         GltfInstancing::logInfo("Output directory not specified, defaulting to: " + config.outputDirectory);
     }
 
-    // Ensure similarityThresholdsParsed is populated (for semantic_hausdorff mode when no config file)
+    // Ensure similarityThresholdsParsed is populated (for semantic_material_geometric mode when no config file)
     if (config.similarityThresholdsParsed.empty() && !config.similarityThresholds.empty()) {
         std::istringstream ss(config.similarityThresholds);
         std::string part;
@@ -1824,8 +1811,6 @@ int main(int argc, char* argv[]) {
     GltfInstancing::logInfo("Stage 1: Detecting instancing opportunities...");
     GltfInstancing::InstancingDetectionResult detectionResult;
     {
-        config.instancingDetectionMode = "semantic_hausdorff";
-        GltfInstancing::logInfo("Using semantic_hausdorff instancing detection mode (legacy bbox logic removed).");
         GltfInstancing::SemanticParser semanticParser;
         if (!config.semanticDataPath.empty() && std::filesystem::exists(config.semanticDataPath)) {
             if (std::filesystem::is_directory(config.semanticDataPath)) {
@@ -1838,7 +1823,7 @@ int main(int argc, char* argv[]) {
             GltfInstancing::logWarning("Semantic data path invalid or not set. All meshes will be grouped under 'unknown'.");
         }
         double threshold = config.similarityThresholdsParsed.empty() ? 0.95 : config.similarityThresholdsParsed[0];
-        GltfInstancing::SemanticHausdorffInstancingDetector detector(
+        GltfInstancing::SemanticMaterialGeometricDetector detector(
             &semanticParser, config.semanticHashFields, threshold, config.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering, config.materialFilterMode);
         detectionResult = detector.detect(loadedModels);
     }
@@ -2067,7 +2052,6 @@ int main(int argc, char* argv[]) {
                     auto lodModels = lodReader.loadGltfModels(fileSet);
                     if (lodModels.empty()) continue;
 
-                    // legacy bbox logic removed; semantic_hausdorff only
                     GltfInstancing::InstancingDetectionResult lodDetectionResult;
                     {
                         GltfInstancing::SemanticParser lodSemanticParser;
@@ -2079,7 +2063,7 @@ int main(int argc, char* argv[]) {
                         }
                         double thresh = (levelInfo.level < static_cast<int>(config.similarityThresholdsParsed.size()))
                             ? config.similarityThresholdsParsed[levelInfo.level] : config.hlodSimilarityThreshold;
-                        GltfInstancing::SemanticHausdorffInstancingDetector lodDetector(
+                        GltfInstancing::SemanticMaterialGeometricDetector lodDetector(
                             &lodSemanticParser, config.semanticHashFields, thresh, hlodParams.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering, config.materialFilterMode);
                         lodDetectionResult = lodDetector.detect(lodModels);
                     }
