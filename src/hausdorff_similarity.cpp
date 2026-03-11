@@ -3,9 +3,11 @@
 #include <CesiumGltf/Mesh.h>
 #include <CesiumGltf/AccessorView.h>
 #include <glm/glm.hpp>
+#include <nanoflann.hpp>
 #include <algorithm>
 #include <limits>
 #include <cmath>
+#include <cstddef>
 
 namespace GltfInstancing {
 
@@ -50,27 +52,60 @@ namespace GltfInstancing {
         }
     }
 
+    namespace {
+        // Adaptor for nanoflann: wrap std::vector<glm::dvec3> for KD-Tree.
+        struct PointCloudAdaptor {
+            const std::vector<glm::dvec3>* pts = nullptr;
+            inline size_t kdtree_get_point_count() const { return pts ? pts->size() : 0; }
+            inline double kdtree_get_pt(const size_t idx, const size_t dim) const {
+                const auto& p = (*pts)[idx];
+                if (dim == 0) return p.x;
+                if (dim == 1) return p.y;
+                return p.z;
+            }
+            template <class BBOX>
+            bool kdtree_get_bbox(BBOX&) const { return false; }
+        };
+
+        using KDTree = nanoflann::KDTreeSingleIndexAdaptor<
+            nanoflann::L2_Adaptor<double, PointCloudAdaptor>,
+            PointCloudAdaptor, 3, size_t>;
+
+        // Directed Hausdorff: max over a in From of (min distance from a to any point in To).
+        // Uses KD-Tree on To for O(|From| * log |To|) instead of O(|From| * |To|).
+        double directedDistanceKdtree(
+            const std::vector<glm::dvec3>& from,
+            const std::vector<glm::dvec3>& to)
+        {
+            if (to.empty()) return 0.0;
+            PointCloudAdaptor adaptTo;
+            adaptTo.pts = &to;
+            KDTree tree(3, adaptTo, nanoflann::KDTreeSingleIndexAdaptorParams(10));
+            tree.buildIndex();
+
+            double maxMinDist = 0.0;
+            std::vector<size_t> idx(1);
+            std::vector<double> distSq(1);
+            for (const auto& a : from) {
+                const double query[3] = { a.x, a.y, a.z };
+                nanoflann::KNNResultSet<double> resultSet(1);
+                resultSet.init(&idx[0], &distSq[0]);
+                tree.findNeighbors(resultSet, query, nanoflann::SearchParameters());
+                double d = (distSq[0] > 0.0) ? std::sqrt(distSq[0]) : 0.0;
+                if (d > maxMinDist) maxMinDist = d;
+            }
+            return maxMinDist;
+        }
+    }
+
     double computeHausdorffDistance(
         const std::vector<glm::dvec3>& pointsA,
         const std::vector<glm::dvec3>& pointsB)
     {
         if (pointsA.empty() || pointsB.empty()) return -1.0;
 
-        auto directedDistance = [](const std::vector<glm::dvec3>& from, const std::vector<glm::dvec3>& to) -> double {
-            double maxMinDist = 0.0;
-            for (const auto& a : from) {
-                double minDist = std::numeric_limits<double>::max();
-                for (const auto& b : to) {
-                    double d = glm::distance(a, b);
-                    if (d < minDist) minDist = d;
-                }
-                if (minDist > maxMinDist) maxMinDist = minDist;
-            }
-            return maxMinDist;
-        };
-
-        double hAB = directedDistance(pointsA, pointsB);
-        double hBA = directedDistance(pointsB, pointsA);
+        double hAB = directedDistanceKdtree(pointsA, pointsB);
+        double hBA = directedDistanceKdtree(pointsB, pointsA);
         return std::max(hAB, hBA);
     }
 

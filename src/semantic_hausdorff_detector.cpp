@@ -135,6 +135,7 @@ namespace GltfInstancing {
 
     InstancingDetectionResult SemanticHausdorffInstancingDetector::detect(const std::vector<LoadedGltfModel>& loadedModels) {
         InstancingDetectionResult result;
+        GltfInstancing::logInfo("[Hausdorff] 开始检测: 遍历 " + std::to_string(loadedModels.size()) + " 个模型收集语义组...");
         std::map<std::string, std::vector<std::pair<std::pair<int32_t, int32_t>, MeshInstanceInfo>>> semanticGroups;
 
         std::map<std::string, int> fileHashToRepId;
@@ -161,12 +162,28 @@ namespace GltfInstancing {
             }
         }
 
+        size_t totalInstances = 0;
+        for (const auto& [k, v] : semanticGroups) totalInstances += v.size();
+        const size_t totalGroups = semanticGroups.size();
+        GltfInstancing::logInfo("[Hausdorff] 开始聚类: " + std::to_string(totalGroups) + " 个语义组, "
+            + std::to_string(totalInstances) + " 个实例, 正在进行相似度比较");
+
+        size_t groupIdx = 0;
+        const size_t logInterval = 100;
         for (auto& [semanticKey, instances] : semanticGroups) {
-            if (instances.empty()) continue;
+            ++groupIdx;
+            if (instances.empty()) {
+                GltfInstancing::logInfo("[Hausdorff] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + " (无实例, 跳过).");
+                continue;
+            }
+
+            GltfInstancing::logInfo("[Hausdorff] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups)
+                + " (本组 " + std::to_string(instances.size()) + " 个实例)...");
 
             std::map<std::pair<int32_t, int32_t>, size_t> meshToRepModelMesh;
             std::vector<std::pair<int32_t, int32_t>> representatives;
             std::vector<std::vector<MeshInstanceInfo>> clusterInstances;
+            size_t similarityCount = 0;
 
             for (const auto& [modelMesh, inst] : instances) {
                 int32_t modelId = modelIdToRepId.count(inst.originalGltfIndex) ? modelIdToRepId[inst.originalGltfIndex] : inst.originalGltfIndex;
@@ -195,6 +212,8 @@ namespace GltfInstancing {
                     const CesiumGltf::Mesh& meshCur = cm->model.meshes[inst.originalMeshIndex];
                     const CesiumGltf::Mesh& meshRep = rm->model.meshes[repMesh];
                     double sim = computeMeshSimilarity(cm->model, meshCur, rm->model, meshRep);
+                    if (++similarityCount % logInterval == 0)
+                        GltfInstancing::logInfo("[Hausdorff]  已比较 " + std::to_string(similarityCount) + " 次 (组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + ")");
                     if (sim >= 0 && sim >= _similarityThreshold) {
                         meshToRepModelMesh[key] = r;
                         clusterInstances[r].push_back(inst);
@@ -208,6 +227,8 @@ namespace GltfInstancing {
                     clusterInstances.push_back({ inst });
                 }
             }
+
+            GltfInstancing::logInfo("[Hausdorff] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + " 完成 (本组 " + std::to_string(representatives.size()) + " 个代表).");
 
             for (size_t c = 0; c < clusterInstances.size(); ++c) {
                 if (clusterInstances[c].size() < static_cast<size_t>(_instanceLimit)) {
@@ -241,6 +262,8 @@ namespace GltfInstancing {
             }
         }
 
+        GltfInstancing::logInfo("[Hausdorff] 聚类完成: " + std::to_string(result.instancedGroups.size()) + " 个实例组, "
+            + std::to_string(result.nonInstancedMeshes.size()) + " 个非实例 mesh.");
         return result;
     }
 

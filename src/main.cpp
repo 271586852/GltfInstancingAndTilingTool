@@ -46,6 +46,14 @@ void disableQuickEditMode() {
 #endif
 }
 
+static void initWindowsConsoleUtf8() {
+#ifdef _WIN32
+    // Ensure UTF-8 output for narrow strings (std::cout / std::cerr).
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
+}
+
 // --- 按流水线阶段分层的输出路径 ---
 namespace OutputPaths {
     inline std::filesystem::path instancingDir(const ToolConfiguration& config) {
@@ -1237,6 +1245,7 @@ void processCsvAgainstGlb(const ToolConfiguration& config) {
 int main(int argc, char* argv[]) {
     // Disable Windows Console Quick Edit Mode to prevent accidental pausing
     disableQuickEditMode();
+    initWindowsConsoleUtf8();
 
     GltfInstancing::logInfo("GltfInstancingTool starting...");
 

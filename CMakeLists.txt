@@ -40,6 +40,17 @@ if(NOT IS_DIRECTORY "${CESIUM_NATIVE_V037_DEBUG_LIBRARY_DIR}")
 endif()
 
 # ----------------------------------------------------------------------------------
+#  nanoflann (header-only, KD-Tree for Hausdorff optimization)
+# ----------------------------------------------------------------------------------
+include(FetchContent)
+FetchContent_Declare(nanoflann
+    GIT_REPOSITORY https://github.com/jlblancoc/nanoflann.git
+    GIT_TAG        v1.5.3
+)
+FetchContent_Populate(nanoflann)
+message(STATUS "nanoflann (KD-Tree) source dir: ${nanoflann_SOURCE_DIR}")
+
+# ----------------------------------------------------------------------------------
 #  源文件
 # ----------------------------------------------------------------------------------
 set(PROJECT_SOURCES
@@ -85,10 +96,12 @@ endif()
 target_include_directories(gltf_instancer PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CESIUM_NATIVE_V037_DEBUG_INCLUDE_DIR}"
+    "${nanoflann_SOURCE_DIR}/include"
 )
 message(STATUS "Include directories for 'gltf_instancer' set to:")
 message(STATUS "  - ${CMAKE_CURRENT_SOURCE_DIR}/src")
 message(STATUS "  - ${CESIUM_NATIVE_V037_DEBUG_INCLUDE_DIR}")
+message(STATUS "  - ${nanoflann_SOURCE_DIR}/include (nanoflann)")
 
 # ----------------------------------------------------------------------------------
 #  手动指定要链接的 Cesium Native v0.37.0 Debug 库
