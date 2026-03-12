@@ -11,23 +11,23 @@
         <mxCell id="3" value="buildSemanticHashKey&#xa;语义分组 (C/F/T)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
           <mxGeometry x="420" y="120" width="160" height="50" as="geometry"/>
         </mxCell>
-        <mxCell id="4" value="material_filter_mode&#xa;材质过滤 (可选)" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
-          <mxGeometry x="430" y="200" width="140" height="50" as="geometry"/>
+        <mxCell id="4" value="material_filter_mode 材质过滤&#xa;none: 不过滤&#xa;hash: 材质+纹理 hash 相同才比较&#xa;index: 材质索引相同才比较" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="400" y="180" width="200" height="80" as="geometry"/>
         </mxCell>
         <mxCell id="5" value="点云采样&#xa;hausdorff_max_sample_points" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
-          <mxGeometry x="440" y="280" width="120" height="50" as="geometry"/>
+          <mxGeometry x="440" y="300" width="120" height="50" as="geometry"/>
         </mxCell>
         <mxCell id="6" value="computeHausdorffDistance&#xa;双向 Hausdorff 距离" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
-          <mxGeometry x="440" y="360" width="120" height="50" as="geometry"/>
+          <mxGeometry x="440" y="380" width="120" height="50" as="geometry"/>
         </mxCell>
         <mxCell id="7" value="hausdorffDistanceToSimilarity&#xa;similarity = 1/(1+distance)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
-          <mxGeometry x="420" y="440" width="160" height="50" as="geometry"/>
+          <mxGeometry x="420" y="460" width="160" height="50" as="geometry"/>
         </mxCell>
         <mxCell id="8" value="similarity >= threshold ?&#xa;实例组聚类" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
-          <mxGeometry x="430" y="530" width="140" height="50" as="geometry"/>
+          <mxGeometry x="430" y="550" width="140" height="50" as="geometry"/>
         </mxCell>
         <mxCell id="9" value="InstancedMeshGroup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
-          <mxGeometry x="440" y="620" width="120" height="40" as="geometry"/>
+          <mxGeometry x="440" y="640" width="120" height="40" as="geometry"/>
         </mxCell>
         <mxCell id="11" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="2" target="3">
           <mxGeometry relative="1" as="geometry"/>

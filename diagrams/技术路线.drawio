@@ -14,8 +14,20 @@
         <mxCell id="4" value="GlbReader&#xa;发现与加载" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
           <mxGeometry x="280" y="80" width="120" height="50" as="geometry"/>
         </mxCell>
-        <mxCell id="5" value="SemanticMaterialGeometricDetector&#xa;语义分组 + Hausdorff 相似度" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
-          <mxGeometry x="440" y="80" width="180" height="50" as="geometry"/>
+        <mxCell id="5" value="SemanticMaterialGeometricDetector&#xa;语义分组 + 材质过滤 + Hausdorff 相似度" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="440" y="80" width="200" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="28" value="material_filter_mode&#xa;none / hash / index&#xa;材质匹配后几何比较" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="280" y="280" width="140" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="29" value="参数" style="endArrow=classic;html=1;exitX=0.5;exitY=0;entryX=0.3;entryY=1;" edge="1" parent="1" source="28" target="5">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="30" value="" style="endArrow=classic;html=1;exitX=0.25;exitY=0;entryX=0.5;entryY=1;dashed=1;" edge="1" parent="1" source="28" target="9">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="31" value="" style="endArrow=classic;html=1;exitX=0.75;exitY=0;entryX=0.5;entryY=1;dashed=1;" edge="1" parent="1" source="28" target="11">
+          <mxGeometry relative="1" as="geometry"/>
         </mxCell>
         <mxCell id="6" value="GlbWriter&#xa;输出 GLB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
           <mxGeometry x="660" y="80" width="120" height="50" as="geometry"/>

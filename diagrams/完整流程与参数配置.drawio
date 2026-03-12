@@ -41,7 +41,7 @@
         <mxCell id="p1c" value="hausdorff_max_sample_points" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
           <mxGeometry x="10" y="85" width="180" height="22" as="geometry"/>
         </mxCell>
-        <mxCell id="p1d" value="material_filter_mode" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
+        <mxCell id="p1d" value="material_filter_mode (none/hash/index) 材质过滤" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
           <mxGeometry x="10" y="110" width="180" height="22" as="geometry"/>
         </mxCell>
         <mxCell id="p1e" value="instanceLimit (--instance-limit)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=10;" vertex="1" parent="stage1Params">
