@@ -36,12 +36,11 @@ namespace GltfInstancing {
         , _materialFilterMode(materialFilterMode.empty() ? "none" : materialFilterMode)
     {
         _semanticHashFieldNames = splitAndTrim(semanticHashFields, ',');
-        if (_semanticHashFieldNames.empty()) {
-            _semanticHashFieldNames = { "category", "family", "type" };
-        }
+        // 空字符串表示不做语义约束，所有 mesh 归入同一组进行材质+几何判定
     }
 
     std::string SemanticMaterialGeometricDetector::buildSemanticHashKey(const std::optional<SemanticInfo>& info) const {
+        if (_semanticHashFieldNames.empty()) return "__GLOBAL__";  // 无语义约束时统一分组
         if (!info.has_value()) return "unknown";
         std::string key;
         for (const auto& field : _semanticHashFieldNames) {
@@ -69,8 +68,14 @@ namespace GltfInstancing {
             const CesiumGltf::Mesh& mesh = loadedGltf.model.meshes[node.mesh];
             std::string meshHashId = mesh.name.empty() ? "" : mesh.name;
             std::string glbStem = loadedGltf.originalPath.empty() ? "" : loadedGltf.originalPath.stem().string();
+            // 若 mesh 名含 "glbStem|meshHashId"（来自 non_instanced.glb / HLOD tile），用其做语义查找
+            size_t pipePos = meshHashId.find('|');
+            if (pipePos != std::string::npos && pipePos > 0 && pipePos + 1 < meshHashId.size()) {
+                glbStem = meshHashId.substr(0, pipePos);
+                meshHashId = meshHashId.substr(pipePos + 1);
+            }
             auto semanticInfo = _semanticParser ? _semanticParser->getSemanticInfo(glbStem, meshHashId) : std::nullopt;
-            std::string semanticKey = buildSemanticHashKey(semanticInfo);
+            std::string semanticKey = _semanticHashFieldNames.empty() ? "__GLOBAL__" : buildSemanticHashKey(semanticInfo);
 
             auto instancingExtIt = node.extensions.find("EXT_mesh_gpu_instancing");
             if (instancingExtIt != node.extensions.end()) {
@@ -182,7 +187,8 @@ namespace GltfInstancing {
                 GltfInstancing::logInfo("[实例检测] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + " (无实例, 跳过).");
                 continue;
             }
-            const bool unknownNoCrossMesh = (semanticKey == "unknown" && !_allowUnknownCrossMeshClustering);
+            // __GLOBAL__ 表示无语义约束，允许跨 mesh 比较；unknown 受 allowUnknownCrossMeshClustering 控制
+            const bool skipCrossMesh = (semanticKey == "unknown" && !_allowUnknownCrossMeshClustering);
 
             GltfInstancing::logInfo("[实例检测] 语义组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups)
                 + " (本组 " + std::to_string(instances.size()) + " 个实例)...");
@@ -206,7 +212,7 @@ namespace GltfInstancing {
                 size_t clusterIdx = clusterInstances.size();
                 bool found = false;
 
-                if (!unknownNoCrossMesh) for (size_t r = 0; r < representatives.size(); ++r) {
+                if (!skipCrossMesh) for (size_t r = 0; r < representatives.size(); ++r) {
                     auto [repModelId, repMesh] = representatives[r];
                     const LoadedGltfModel* rm = nullptr;
                     for (const auto& m : loadedModels)

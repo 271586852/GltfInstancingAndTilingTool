@@ -629,6 +629,19 @@ namespace GltfInstancing {
             if (!originalModel) continue;
             int32_t newMeshIndex = copyMeshDefinition(*originalModel, niMeshInfo.originalMeshIndexInModel, niMeshInfo.originalGltfModelIndex, remapping);
             if (newMeshIndex < 0) continue;
+            // 保留原始 GLB stem 到 mesh 名，供 Non-instanced LOD / HLOD 后处理实例化检测时语义查找
+            std::string glbStem;
+            for (const auto& lm : originalModels) {
+                if (lm.uniqueId == niMeshInfo.originalGltfModelIndex && !lm.originalPath.empty()) {
+                    glbStem = lm.originalPath.stem().string();
+                    break;
+                }
+            }
+            if (!glbStem.empty() && static_cast<size_t>(newMeshIndex) < _outputGltf.meshes.size()) {
+                const std::string& origName = _outputGltf.meshes[newMeshIndex].name;
+                if (origName.find('|') == std::string::npos)
+                    _outputGltf.meshes[newMeshIndex].name = glbStem + "|" + origName;
+            }
             int32_t regularNodeIndex = createNonInstancedNode(newMeshIndex, niMeshInfo.transform);
             if (regularNodeIndex >= 0) {
                 rootNodeIndices.push_back(regularNodeIndex);
@@ -882,6 +895,13 @@ namespace GltfInstancing {
                              ", mesh index " + std::to_string(meshIdx) + originalMeshNameInfo);
                     overallSuccess = false;
                     continue; 
+                }
+                // 保留原始 GLB stem 到 mesh 名，供 HLOD 语义查找
+                std::string segGlbStem = loadedModel.originalPath.empty() ? "" : loadedModel.originalPath.stem().string();
+                if (!segGlbStem.empty() && static_cast<size_t>(newMeshIndexInOutput) < _outputGltf.meshes.size()) {
+                    const std::string& mn = _outputGltf.meshes[newMeshIndexInOutput].name;
+                    if (mn.find('|') == std::string::npos)
+                        _outputGltf.meshes[newMeshIndexInOutput].name = segGlbStem + "|" + mn;
                 }
             
                 CesiumGltf::Node nodeForExportedGlb;

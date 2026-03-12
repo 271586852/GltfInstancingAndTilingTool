@@ -74,6 +74,17 @@ namespace GltfInstancing {
             const SemanticParser& semanticParser
         );
 
+        /**
+         * 对实例化检测结果做 Family/Category 聚类，减少 Unique Meshes。
+         * 供 Non-instanced LOD 后处理、HLOD 父 tile 等场景复用。
+         */
+        static InstancingDetectionResult clusterInstancingResult(
+            const InstancingDetectionResult& input,
+            const std::vector<LoadedGltfModel>& loadedModels,
+            const SemanticParser& semanticParser,
+            const LODConfig& config
+        );
+
     private:
         LODConfig _config;
 
@@ -99,6 +110,13 @@ namespace GltfInstancing {
 
         // 5. 构建 LOD1 (Proxy Level): 全局 AABB 替换 (生成 Cube)
         LODLevelResult buildLOD1(const std::vector<ExtendedMeshInfo>& lod2Meshes);
+
+        // 聚类内部流程：DetectionResult -> LOD5 -> LOD4 -> LOD3 -> DetectionResult
+        InstancingDetectionResult clusterResultInternal(
+            const InstancingDetectionResult& input,
+            const std::vector<LoadedGltfModel>& loadedModels,
+            const SemanticParser& semanticParser
+        );
 
         // --- 辅助函数 ---
 

@@ -35,6 +35,24 @@
         <mxCell id="11" value="QuadtreePipeline&#xa;四叉树 HLOD" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
           <mxGeometry x="560" y="320" width="140" height="50" as="geometry"/>
         </mxCell>
+        <mxCell id="22" value="语义映射保留&#xa;glbStem|meshHashId&#xa;(Non-inst LOD/HLOD)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="440" y="200" width="120" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="23" value="Analysis CSV&#xa;instancing.csv&#xa;instance_lod.csv&#xa;non_instance_lod_*.csv&#xa;hlod_analysis.csv" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=left;spacingLeft=5;" vertex="1" parent="1">
+          <mxGeometry x="840" y="200" width="120" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="24" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="5" target="22">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="25" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="22" target="9">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="26" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="22" target="11">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="27" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=0;entryX=0.25;entryY=1;" edge="1" parent="1" source="7" target="23">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
         <mxCell id="12" value="" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="2" target="4">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>

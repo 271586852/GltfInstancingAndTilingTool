@@ -33,7 +33,8 @@ mesh_segmentation = false
 # 实例化检测模式，当前仅支持 semantic_material_geometric
 # instancing_detection_mode = semantic_material_geometric
 
-# 语义分组字段，逗号分隔，对应 Element_Category、Element_Family、Element_Type。默认 category,family,type
+# 语义分组字段，逗号分隔，如 category,family,type。空表示不做语义约束，所有 mesh 归入同一组。
+# 仅写 category 则只按类别分组；category,family 则按类别+族分组。默认 category,family,type
 semantic_hash_fields = category,family,type
 
 # Stage 1 相似度阈值，逗号分隔，值域 [0,1]，越高越严格。默认 0.95,0.90,0.85,0.80,0.75
@@ -55,6 +56,7 @@ material_filter_mode = none
 semantic_data_path = D:/Data/semantic
 
 # 当 semantic_data_path 为文件夹时，用于匹配的 GLB 来源目录（默认用 input_directory）
+# HLOD 使用 split/segmented 输入时，自动设为原始 input_directory，以正确匹配 RISCRVT
 # semantic_input_directory = D:/Data/BIM/住宅标准层
 
 # -----------------------------------------------------------------------------
@@ -93,6 +95,9 @@ enable_geometric_check = true
 # -----------------------------------------------------------------------------
 # 四、Non-instanced LOD（非实例化 LOD）
 # -----------------------------------------------------------------------------
+# 说明：实例化后处理沿用二节的 semantic_hash_fields、material_filter_mode、
+# allow_unknown_cross_mesh_clustering、hausdorff_max_sample_points；
+# 聚类时沿用三节的 lod4_size_tolerance、lod3_aspect_ratio_tolerance
 # 是否对非实例化 mesh 做网格简化 LOD。默认 false
 enable_non_instanced_lod_generation = false
 
@@ -108,8 +113,13 @@ non_instanced_min_simplify_index_count = 300
 # 非实例化 LOD 生成后，是否对每个 LOD 级再做实例化检测。默认 false
 enable_non_instanced_lod_instancing = false
 
+# 实例化检测后，是否再做 Family/Category 层级聚类（同 Instance LOD 的 LOD4/LOD3）。默认 false
+enable_non_instanced_lod_clustering = false
+
 # 非实例化 LOD 后处理实例化检测的每级相似度阈值，越粗糙越宽松。默认 0.95,0.90,0.85
 non_instanced_lod_similarity_thresholds = 0.95,0.90,0.85
+
+# 非实例化 LOD 实例化检测的实例数阈值；沿用六节的 hlod_instance_limit（未设置则用 instance_limit）
 
 # -----------------------------------------------------------------------------
 # 五、Quadtree / HLOD 配置
@@ -126,10 +136,16 @@ quadtree_max_objects_per_tile = 50
 # -----------------------------------------------------------------------------
 # 六、HLOD 实例化检测参数
 # -----------------------------------------------------------------------------
+# 说明：HLOD 实例化检测沿用二节的 semantic_hash_fields、material_filter_mode、
+# allow_unknown_cross_mesh_clustering、hausdorff_max_sample_points
+# 实例化检测后，是否再做 Family/Category 层级聚类（同 Instance LOD 的 LOD4/LOD3）。默认 false
+enable_hlod_clustering = false
+
 # HLOD 每层级相似度阈值，父 tile 越粗越宽松，逗号分隔。默认 0.70,0.65,0.60,0.55,0.50
 hlod_similarity_thresholds = 0.70,0.65,0.60,0.55,0.50
 
 # HLOD 实例数阈值；-1 表示使用 Stage 1 的 instance_limit
+# 该值同时用于 Non-instanced LOD 实例化检测（enable_non_instanced_lod_instancing=true 时）
 hlod_instance_limit = 3
 
 # HLOD 是否允许非均匀缩放实例化。默认 false
@@ -161,3 +177,11 @@ experiment_dataset_name = 多楼层建筑
 
 # 策略 ID，用于实验 1 等对比实验（运行实验 1 时设置）
 # experiment_strategy_id = 02_Moderate
+
+# =============================================================================
+# 输出目录与 Analysis CSV（实验模式下）
+# =============================================================================
+# 01_instancing/analysis/instancing.csv
+# 02_instance_lod/analysis/instance_lod.csv（含 Instancing Ratio、Instancing Increase）
+# 02_non_instance_lod/analysis/non_instance_lod_instancing_analysis.csv（实例化开启时，含 InstancingIncrease、InstancingIncreaseRatio）
+# 03_hlod/hlod_analysis.csv（每 tile 及 Per-Level Summary 含 InstancingRatio、InstancingIncrease、InstancingIncreaseRatio）

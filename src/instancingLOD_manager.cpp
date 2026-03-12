@@ -1,6 +1,7 @@
 #include "instancingLOD_manager.h"
 #include "hausdorff_similarity.h"
 #include "material_matching.h"
+#include "utilities.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -444,12 +445,63 @@ namespace GltfInstancing {
 
     double InstancingLODManager::getAspectRatio(const BoundingBox& box) {
         glm::dvec3 size = box.max - box.min;
-        // ?éí??è x, y, z
         std::vector<double> dims = { size.x, size.y, size.z };
         std::sort(dims.begin(), dims.end());
-        // Èï?/ ???(???Áï?È?ò???/?éö???)
         if (dims[1] < 1e-6) return 1.0;
         return dims[2] / dims[1];
+    }
+
+    // --- clusterInstancingResult (Family/Category clustering) ---
+
+    InstancingDetectionResult InstancingLODManager::clusterInstancingResult(
+        const InstancingDetectionResult& input,
+        const std::vector<LoadedGltfModel>& loadedModels,
+        const SemanticParser& semanticParser,
+        const LODConfig& config
+    ) {
+        InstancingLODManager mgr(config);
+        return mgr.clusterResultInternal(input, loadedModels, semanticParser);
+    }
+
+    InstancingDetectionResult InstancingLODManager::clusterResultInternal(
+        const InstancingDetectionResult& input,
+        const std::vector<LoadedGltfModel>& loadedModels,
+        const SemanticParser& semanticParser
+    ) {
+        InstancingDetectionResult result;
+        result.nonInstancedMeshes = input.nonInstancedMeshes;
+
+        if (input.instancedGroups.empty()) return result;
+
+        auto lod5Meshes = initializeLOD5(input, loadedModels, semanticParser);
+        if (lod5Meshes.empty()) return input;
+
+        LODLevelResult lod4Result = buildLOD4(lod5Meshes, loadedModels);
+        LODLevelResult lod3Result = buildLOD3(lod4Result.nodes, loadedModels);
+
+        for (const auto& node : lod3Result.nodes) {
+            if (node.instances.empty()) continue;
+            if (node.sourceModelIndex < 0 || node.sourceModelIndex >= static_cast<int>(loadedModels.size())) continue;
+            const auto& model = loadedModels[node.sourceModelIndex].model;
+            if (node.sourceMeshIndex < 0 || node.sourceMeshIndex >= static_cast<int>(model.meshes.size())) continue;
+
+            InstancedMeshGroup grp;
+            grp.representativeGltfModelIndex = node.sourceModelIndex;
+            grp.representativeMeshIndexInModel = node.sourceMeshIndex;
+            grp.representativeMeshName = node.meshName;
+            grp.meshSignature = static_cast<size_t>(std::hash<std::string>{}(node.meshName + std::to_string(result.instancedGroups.size())));
+            grp.instances = node.instances;
+
+            const auto& mesh = model.meshes[node.sourceMeshIndex];
+            grp.representativeMeshBoundingBox = getMeshBoundingBox(model, mesh);
+            grp.representativePrimitiveBoundingBoxes.clear();
+            for (const auto& p : mesh.primitives)
+                grp.representativePrimitiveBoundingBoxes.push_back(getPrimitiveBoundingBox(model, p));
+
+            result.instancedGroups.push_back(grp);
+        }
+
+        return result;
     }
 
 } // namespace GltfInstancing

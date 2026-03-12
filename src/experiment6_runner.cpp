@@ -1037,13 +1037,17 @@ ExperimentFramework::CrossGlbHLODExperiment::CrossGlbMetrics collectCrossGlbMetr
         int maxLevel = 0;
 
         while (std::getline(file, line)) {
+            if (line.empty() || line[0] == '#') continue;  // Skip blank lines and comments
             std::stringstream ss(line);
             std::string levelStr;
-            std::getline(ss, levelStr, ',');
-            int level = std::stoi(levelStr);
-            depthCounts[level]++;
-            maxLevel = std::max(maxLevel, level);
-            metrics.totalTiles++;
+            if (!std::getline(ss, levelStr, ',')) continue;
+            if (levelStr.empty() || !std::isdigit(static_cast<unsigned char>(levelStr[0]))) continue;  // Skip header "Level"
+            try {
+                int level = std::stoi(levelStr);
+                depthCounts[level]++;
+                maxLevel = std::max(maxLevel, level);
+                metrics.totalTiles++;
+            } catch (...) {}
         }
 
         metrics.maxDepth = maxLevel;

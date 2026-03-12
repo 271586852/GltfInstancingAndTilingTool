@@ -26,6 +26,7 @@ quadtree_max_depth = 6
 quadtree_max_objects_per_tile = 50
 hlod_instance_limit = 3
 hlod_similarity_thresholds = 0.70,0.65,0.60,0.55,0.50
+# enable_hlod_clustering = false   # 可选：实例化检测后再做 Family/Category 层级聚类
 
 # --- 实验模式 ---
 enable_experiment_mode = true

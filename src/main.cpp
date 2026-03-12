@@ -94,6 +94,9 @@ namespace OutputPaths {
     inline std::filesystem::path nonInstanceLodAnalysisCsv(const ToolConfiguration& config) {
         return nonInstanceLodDir(config) / "analysis" / "non_instance_lod_analysis.csv";
     }
+    inline std::filesystem::path nonInstanceLodInstancingAnalysisCsv(const ToolConfiguration& config) {
+        return nonInstanceLodDir(config) / "analysis" / "non_instance_lod_instancing_analysis.csv";
+    }
     inline std::filesystem::path hlodDir(const ToolConfiguration& config) {
         return std::filesystem::path(config.outputDirectory) / "03_hlod";
     }
@@ -343,6 +346,9 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                         config.nonInstancedLodSimilarityThresholdsParsed.push_back(std::max(0.0, std::min(1.0, v)));
                     } catch (...) {}
                 }
+            } else if (key == "enable_non_instanced_lod_clustering") {
+                std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+                config.enableNonInstancedLodClustering = (value == "true" || value == "1" || value == "yes");
             } else if (key == "enable_quadtree") {
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") config.enableQuadtree = true;
@@ -375,7 +381,10 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 config.experimentStrategyId = value;
             }
             // --- HLOD Instancing Detection Parameters ---
-            else if (key == "hlod_similarity_thresholds") {
+            else if (key == "enable_hlod_clustering") {
+                std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+                config.enableHlodClustering = (value == "true" || value == "1" || value == "yes");
+            } else if (key == "hlod_similarity_thresholds") {
                 config.hlodSimilarityThresholds = value;
                 config.hlodSimilarityThresholdsParsed.clear();
                 std::istringstream ss(value);
@@ -1077,6 +1086,33 @@ void writeLodAnalysisCsv(const ToolConfiguration& config,
         }
         csvFile << "\n";
 
+        // Instancing Ratio = Total Instances / Unique Meshes (每级实例化比例)
+        csvFile << "Instancing Ratio,-";
+        double baselineRatio = -1.0;
+        for (int l = 5; l >= 1; --l) {
+            if (statsMap.count(l) && statsMap[l].uniqueMeshes > 0) {
+                double ratio = (double)statsMap[l].totalInstances / statsMap[l].uniqueMeshes;
+                csvFile << "," << std::fixed << std::setprecision(4) << ratio;
+                if (baselineRatio < 0) baselineRatio = ratio;
+            } else {
+                csvFile << ",-";
+            }
+        }
+        csvFile << "\n";
+
+        // Instancing Increase = (current ratio - LOD5 baseline) 实例化增加度
+        csvFile << "Instancing Increase,-";
+        for (int l = 5; l >= 1; --l) {
+            if (statsMap.count(l) && statsMap[l].uniqueMeshes > 0 && baselineRatio >= 0) {
+                double ratio = (double)statsMap[l].totalInstances / statsMap[l].uniqueMeshes;
+                double increase = ratio - baselineRatio;
+                csvFile << "," << std::fixed << std::setprecision(4) << increase;
+            } else {
+                csvFile << ",-";
+            }
+        }
+        csvFile << "\n";
+
         csvFile.close();
         GltfInstancing::logInfo("LOD analysis CSV written to: " + csvPath.string());
     } else {
@@ -1605,6 +1641,8 @@ int main(int argc, char* argv[]) {
             quadConfig.inputDirectory = quadtreeInputPath;
             // Output to a subfolder to avoid overwriting standard output
             quadConfig.outputDirectory = OutputPaths::hlodDir(config).string();
+            // 输入为 split/segmented 输出时，语义查找需用原始 input_directory 匹配 RISCRVT
+            quadConfig.semanticInputDirectory = config.inputDirectory;
 
             GltfInstancing::logInfo("Starting Quadtree Pipeline...");
             QuadtreePipeline::Pipeline pipeline(quadConfig);
@@ -1962,7 +2000,11 @@ int main(int argc, char* argv[]) {
                 std::vector<GltfInstancing::TilesetNode> finalNodes;
                 GltfInstancing::GlbReader lodReader;
 
-                    auto hlodParams = getHlodInstancingParams(config);
+                auto hlodParams = getHlodInstancingParams(config);
+
+                // Collect instancing stats per level for analysis CSV
+                struct NonInstLodInstancingStats { int level; size_t uniqueMeshes; size_t totalInstances; size_t nonInstancedCount; };
+                std::vector<NonInstLodInstancingStats> nonInstLodInstancingStats;
 
                 for (const auto& levelInfo : lodLevels) {
                     GltfInstancing::logInfo("Processing Level " + std::to_string(levelInfo.level) + " for instancing...");
@@ -1990,6 +2032,22 @@ int main(int argc, char* argv[]) {
                         GltfInstancing::SemanticMaterialGeometricDetector lodDetector(
                             &lodSemanticParser, config.semanticHashFields, thresh, hlodParams.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering, config.materialFilterMode);
                         lodDetectionResult = lodDetector.detect(lodModels);
+
+                        if (config.enableNonInstancedLodClustering && !lodDetectionResult.instancedGroups.empty()) {
+                            GltfInstancing::LODConfig clusterConfig;
+                            clusterConfig.similarityThresholdsPerLevel = config.nonInstancedLodSimilarityThresholdsParsed.size() >= 2
+                                ? std::vector<double>(config.nonInstancedLodSimilarityThresholdsParsed.begin(),
+                                    config.nonInstancedLodSimilarityThresholdsParsed.begin() + 2)
+                                : std::vector<double>{ 0.90, 0.85 };
+                            clusterConfig.hausdorffMaxSamplePoints = config.hausdorffMaxSamplePoints;
+                            clusterConfig.instanceLimit = hlodParams.instanceLimit;
+                            clusterConfig.materialFilterMode = config.materialFilterMode;
+                            clusterConfig.lod4_sizeTolerance = config.lod4SizeTolerance;
+                            clusterConfig.lod3_aspectRatioTolerance = config.lod3AspectRatioTolerance;
+                            lodDetectionResult = GltfInstancing::InstancingLODManager::clusterInstancingResult(
+                                lodDetectionResult, lodModels, lodSemanticParser, clusterConfig);
+                            GltfInstancing::logInfo("Applied Family/Category clustering to Non-instanced LOD level " + std::to_string(levelInfo.level));
+                        }
                     }
 
                     std::string baseName = levelInfo.filePath.stem().string();
@@ -1999,6 +2057,13 @@ int main(int argc, char* argv[]) {
 
                     auto writeInst = glbWriter.writeInstancedMeshesOnly(lodModels, lodDetectionResult, instancedPath);
                     auto writeUniq = glbWriter.writeNonInstancedMeshesOnly(lodModels, lodDetectionResult, uniquePath);
+
+                    // Collect instancing stats for this level
+                    size_t uMeshes = lodDetectionResult.instancedGroups.size();
+                    size_t tInst = 0;
+                    for (const auto& g : lodDetectionResult.instancedGroups) tInst += g.instances.size();
+                    size_t nonInst = lodDetectionResult.nonInstancedMeshes.size();
+                    nonInstLodInstancingStats.push_back({ levelInfo.level, uMeshes, tInst, nonInst });
 
                     std::vector<std::filesystem::path> levelContents;
                     GltfInstancing::BoundingBox combinedBBox;
@@ -2039,6 +2104,31 @@ int main(int argc, char* argv[]) {
                     node.geometricError = levelInfo.geometricError;
                     node.boundingVolume = combinedBBox;
                     finalNodes.push_back(node);
+                }
+
+                // Write Non-Instance LOD instancing analysis CSV
+                if (!nonInstLodInstancingStats.empty()) {
+                    std::filesystem::path csvPath = OutputPaths::nonInstanceLodInstancingAnalysisCsv(config);
+                    std::ofstream csvFile(csvPath);
+                    if (csvFile.is_open()) {
+                        csvFile << "# Non-Instance LOD Instancing Analysis (LOD越大越精细)\n";
+                        csvFile << "Level,UniqueMeshes,TotalInstances,NonInstancedCount,InstancingRatio,InstancingIncrease,InstancingIncreaseRatio(%)\n";
+                        double baselineRatio = -1.0;
+                        std::sort(nonInstLodInstancingStats.begin(), nonInstLodInstancingStats.end(),
+                            [](const NonInstLodInstancingStats& a, const NonInstLodInstancingStats& b) { return a.level < b.level; });
+                        for (const auto& s : nonInstLodInstancingStats) {
+                            size_t totalUnique = s.uniqueMeshes + s.nonInstancedCount;
+                            double ratio = (totalUnique > 0) ? (double)s.totalInstances / totalUnique : 0.0;
+                            if (baselineRatio < 0) baselineRatio = ratio;
+                            double increase = (baselineRatio >= 0) ? (ratio - baselineRatio) : 0.0;
+                            double increaseRatioPct = (baselineRatio > 0) ? (increase / baselineRatio * 100.0) : 0.0;
+                            csvFile << "LOD" << s.level << "," << s.uniqueMeshes << "," << s.totalInstances << ","
+                                << s.nonInstancedCount << "," << std::fixed << std::setprecision(4) << ratio << ","
+                                << increase << "," << std::setprecision(2) << increaseRatioPct << "\n";
+                        }
+                        csvFile.close();
+                        GltfInstancing::logInfo("Non-Instance LOD instancing analysis written to: " + csvPath.string());
+                    }
                 }
 
                 if (!finalNodes.empty()) {
@@ -2288,6 +2378,8 @@ int main(int argc, char* argv[]) {
                 quadConfig.inputDirectory = quadtreeInputPath;
                 // Output to a subfolder to avoid overwriting standard output
                 quadConfig.outputDirectory = OutputPaths::hlodDir(config).string();
+                // 输入为 split/segmented 输出时，语义查找需用原始 input_directory 匹配 RISCRVT
+                quadConfig.semanticInputDirectory = config.inputDirectory;
 
                 GltfInstancing::logInfo("Starting Quadtree Pipeline...");
 
@@ -2351,6 +2443,7 @@ int main(int argc, char* argv[]) {
                 {"instancing_analysis.csv", OutputPaths::instancingAnalysisCsv(config)},
                 {"instance_lod_analysis.csv", OutputPaths::instanceLodAnalysisCsv(config)},
                 {"non_instance_lod_analysis.csv", OutputPaths::nonInstanceLodAnalysisCsv(config)},
+                {"non_instance_lod_instancing_analysis.csv", OutputPaths::nonInstanceLodInstancingAnalysisCsv(config)},
                 {"hlod_analysis.csv", OutputPaths::hlodAnalysisCsv(config)}
             };
 

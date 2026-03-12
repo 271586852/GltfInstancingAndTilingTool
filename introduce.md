@@ -4,6 +4,14 @@
 
 该工具面向批量 GLB 模型的实例化检测与 3D Tiles 输出，并可选生成多层 LOD。核心流程以「读入 → 分析 → 重组 → 输出」为主线，结合语义与几何特征进行分层组织，最终生成可用于流式加载的 GLB/tileset。
 
+## 流程图
+
+- **diagrams/技术路线.drawio**：技术路线总览（drawio 格式）
+- **diagrams/技术流程图_mermaid.md**：完整技术流程图（Mermaid 格式，含实例化检测、LOD、HLOD、语义映射等详细流程）
+- **diagrams/完整流程与参数配置.drawio**：流程与参数配置对应关系
+- **diagrams/HLOD建立流程.drawio**：Quadtree HLOD 建立流程
+- **diagrams/几何相似度判定流程.drawio**：Hausdorff 几何相似度判定流程
+
 ## 技术路线（处理流程）
 
 1. **配置与日志初始化**

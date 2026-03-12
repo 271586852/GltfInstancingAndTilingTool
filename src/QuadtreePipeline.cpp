@@ -5,6 +5,7 @@
 #include "tileset_writer.h"
 #include "ToolConfiguration.h" 
 #include "NonInstancingLOD_manager.h" 
+#include "instancingLOD_manager.h"
 #include "instancing_result.h"
 #include "semantic_material_geometric_detector.h"
 #include "semantic_parser.h"      
@@ -121,8 +122,9 @@ namespace QuadtreePipeline {
     }
 
     // Helper: Merge a source Model into a destination Model, updating offsets
+    // sourceStem: 若非空，为 mesh 名添加前缀 "sourceStem|"，供 Non-instanced LOD / HLOD 语义查找
     // Returns index offset for Meshes in the destination model
-    size_t mergeModel(CesiumGltf::Model& dest, const CesiumGltf::Model& src) {
+    size_t mergeModel(CesiumGltf::Model& dest, const CesiumGltf::Model& src, const std::string& sourceStem = "") {
         // Ensure dest has at least one buffer
         if (dest.buffers.empty()) {
             dest.buffers.resize(1);
@@ -215,6 +217,8 @@ namespace QuadtreePipeline {
 
         // 8. Meshes
         for (auto m : src.meshes) {
+            if (!sourceStem.empty() && m.name.find('|') == std::string::npos)
+                m.name = sourceStem + "|" + m.name;
             for (auto& prim : m.primitives) {
                 for (auto& attr : prim.attributes) {
                     attr.second += static_cast<int32_t>(accessorOffset);
@@ -650,7 +654,8 @@ namespace QuadtreePipeline {
             CesiumGltfReader::GltfReaderOptions options;
             auto result = reader.readGltf(gsl::span<const std::byte>(data), options);
             if (result.model) {
-                 size_t meshOffset = mergeModel(outModel, *result.model);
+                 std::string stem = obj.originalFilePath.stem().string();
+                 size_t meshOffset = mergeModel(outModel, *result.model, stem);
                  
                  for (auto n : result.model->nodes) {
                      if (n.mesh >= 0) n.mesh += static_cast<int32_t>(meshOffset);
@@ -831,6 +836,22 @@ namespace QuadtreePipeline {
                 _config.allowUnknownCrossMeshClustering,
                 _config.materialFilterMode);
             result = detector.detect(models);
+
+            if (_config.enableHlodClustering && !result.instancedGroups.empty()) {
+                GltfInstancing::LODConfig clusterConfig;
+                clusterConfig.similarityThresholdsPerLevel = _config.hlodSimilarityThresholdsParsed.size() >= 2
+                    ? std::vector<double>(_config.hlodSimilarityThresholdsParsed.begin(),
+                        _config.hlodSimilarityThresholdsParsed.begin() + 2)
+                    : std::vector<double>{ 0.65, 0.60 };
+                clusterConfig.hausdorffMaxSamplePoints = _config.hausdorffMaxSamplePoints;
+                clusterConfig.instanceLimit = hlodInstanceLimit;
+                clusterConfig.materialFilterMode = _config.materialFilterMode;
+                clusterConfig.lod4_sizeTolerance = _config.lod4SizeTolerance;
+                clusterConfig.lod3_aspectRatioTolerance = _config.lod3AspectRatioTolerance;
+                result = GltfInstancing::InstancingLODManager::clusterInstancingResult(
+                    result, models, semanticParser, clusterConfig);
+                std::cout << "[HLOD] Applied Family/Category clustering for level " << level << std::endl;
+            }
         }
         
         GltfInstancing::GlbWriter writer;
@@ -879,7 +900,20 @@ namespace QuadtreePipeline {
         std::ofstream csv(reportPath);
         if (!csv.is_open()) return;
         
-        csv << "Level,Tile,FileSize(KB),UniqueMeshes,Instances,StoredTriangles,RenderedTriangles,ReductionRatio\n";
+        // Baseline = leaf level (max level) for InstancingIncrease
+        int maxLevel = 0;
+        for (const auto& s : _stats) if (s.level > maxLevel) maxLevel = s.level;
+        std::map<int, size_t> levelInstancesForBaseline, levelUniqueForBaseline;
+        for (const auto& s : _stats) {
+            levelInstancesForBaseline[s.level] += s.instanceCount;
+            levelUniqueForBaseline[s.level] += s.uniqueMeshCount;
+        }
+        double baselineInstRatio = -1.0;
+        if (levelUniqueForBaseline.count(maxLevel) && levelUniqueForBaseline[maxLevel] > 0) {
+            baselineInstRatio = (double)levelInstancesForBaseline[maxLevel] / levelUniqueForBaseline[maxLevel];
+        }
+
+        csv << "Level,Tile,FileSize(KB),UniqueMeshes,Instances,StoredTriangles,RenderedTriangles,ReductionRatio,InstancingRatio,InstancingIncrease,InstancingIncreaseRatio(%)\n";
         
         // Sort by level then name
         std::sort(_stats.begin(), _stats.end(), [](const TileStats& a, const TileStats& b){
@@ -889,6 +923,9 @@ namespace QuadtreePipeline {
         
         for (const auto& s : _stats) {
             double ratio = (s.renderedTriangleCount > 0) ? (double)s.triangleCount / s.renderedTriangleCount : 1.0;
+            double instRatio = (s.uniqueMeshCount > 0) ? (double)s.instanceCount / s.uniqueMeshCount : 0.0;
+            double increase = (baselineInstRatio >= 0) ? (instRatio - baselineInstRatio) : 0.0;
+            double increaseRatioPct = (baselineInstRatio > 0) ? (increase / baselineInstRatio * 100.0) : 0.0;
             
             csv << s.level << ","
                 << s.tileName << ","
@@ -897,7 +934,30 @@ namespace QuadtreePipeline {
                 << s.instanceCount << ","
                 << s.triangleCount << ","
                 << s.renderedTriangleCount << ","
-                << std::setprecision(4) << ratio << "\n";
+                << std::setprecision(4) << ratio << ","
+                << instRatio << ","
+                << increase << ","
+                << std::setprecision(2) << increaseRatioPct << "\n";
+        }
+        
+        // Per-level summary: Instancing Ratio, Instancing Increase, Instancing Increase Ratio (baseline = max level = leaf)
+        std::map<int, size_t> levelInstances, levelUniqueMeshes;
+        for (const auto& s : _stats) {
+            levelInstances[s.level] += s.instanceCount;
+            levelUniqueMeshes[s.level] += s.uniqueMeshCount;
+        }
+        csv << "\n# Per-Level Instancing Summary\n";
+        csv << "Level,AggregateInstances,AggregateUniqueMeshes,InstancingRatio,InstancingIncrease,InstancingIncreaseRatio(%)\n";
+        for (int l = maxLevel; l >= 0; --l) {
+            if (!levelInstances.count(l) || !levelUniqueMeshes.count(l)) continue;
+            size_t inst = levelInstances[l];
+            size_t uniq = levelUniqueMeshes[l];
+            double instRatio = (uniq > 0) ? (double)inst / uniq : 0.0;
+            double increase = (baselineInstRatio >= 0) ? (instRatio - baselineInstRatio) : 0.0;
+            double increaseRatioPct = (baselineInstRatio > 0) ? (increase / baselineInstRatio * 100.0) : 0.0;
+            csv << l << "," << inst << "," << uniq << ","
+                << std::fixed << std::setprecision(4) << instRatio << "," << increase << ","
+                << std::setprecision(2) << increaseRatioPct << "\n";
         }
         
         csv.close();

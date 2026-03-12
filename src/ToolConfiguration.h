@@ -58,6 +58,8 @@ struct ToolConfiguration {
     // HLOD 每层级相似度阈值，父层级越粗越宽松。若不足则用最后一值
     std::string hlodSimilarityThresholds = "0.70,0.65,0.60,0.55,0.50";
     std::vector<double> hlodSimilarityThresholdsParsed;
+    // HLOD 实例化检测后，是否再做 Family/Category 层级聚类（同 Instance LOD 的 LOD4/LOD3）
+    bool enableHlodClustering = false;
 
     // --- Non-Instance LOD Configuration ---
     bool enableNonInstancedLodGeneration = false;
@@ -68,6 +70,8 @@ struct ToolConfiguration {
     // 非实例化 LOD 每级相似度阈值，越粗糙越宽松
     std::string nonInstancedLodSimilarityThresholds = "0.95,0.90,0.85";
     std::vector<double> nonInstancedLodSimilarityThresholdsParsed;
+    // 非实例化 LOD 实例化检测后，是否再做 Family/Category 层级聚类（同 Instance LOD 的 LOD4/LOD3）
+    bool enableNonInstancedLodClustering = false;
 
     // --- Quadtree Pipeline Configuration ---
     bool enableQuadtree = false;
