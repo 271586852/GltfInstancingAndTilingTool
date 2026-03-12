@@ -111,9 +111,9 @@ bool CsvReportGenerator::writeInstancingAnalysis(
     std::ofstream file(outputPath);
     if (!file.is_open()) return false;
 
-    file << "Metric,Value,Unit\n";
+    file << "Metric,Value,Unit,Description\n";
 
-    // 按预定顺序写入关键指标
+    // 按预定顺序写入关键指标（实例化检测核心指标优先）
     std::vector<std::string> keyOrder = {
         "SO", "SC", "CR",
         "Eo", "Ec", "ECR",
@@ -131,7 +131,8 @@ bool CsvReportGenerator::writeInstancingAnalysis(
         if (it != metrics.end()) {
             file << it->second.name << ","
                  << std::fixed << std::setprecision(4) << it->second.value << ","
-                 << it->second.unit << "\n";
+                 << it->second.unit << ","
+                 << (it->second.description.empty() ? "" : it->second.description) << "\n";
         }
     }
 

@@ -226,11 +226,14 @@ output_directory/experiments/         # 实验输出在 output_directory 内
 
 | 列名 | 说明 |
 |------|------|
-| Metric | 指标名称（如 Input Models, Initial Nodes, Node Reduction (%)） |
+| Metric | 指标名称 |
 | Value | 数值 |
 | Unit | 单位（count, %, MB 等） |
+| Description | 指标说明 |
 
-常见指标：Input Models、Initial Nodes、Final Nodes、Node Reduction (%)、File Size Reduction (%)、Instanced Groups、Non-instanced Meshes、Final Instances 等。
+**核心指标（按输出顺序）**：SO（原文件大小）、SC（优化后大小）、CR（压缩比率 SC/SO）、Eo（优化前实体数）、Ec（优化后实体数）、ECR（Ec/Eo）、EIc（实例化构件所表征的实体总数）、IR（实例化率 EIc/Eo）、Ic（优化后实例化构件的数量）、PIC（平均每个实例化构件表达的实体数量 EIc/Ic）。
+
+其他指标：Input Models、Initial Nodes、Final Nodes、Node Reduction (%)、File Size Reduction (%)、Instanced Groups、Non-instanced Meshes、Final Instances 等。
 
 ---
 

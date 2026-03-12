@@ -856,11 +856,12 @@ void writeInstancingAnalysisCsvEnhanced(
     // 实例化指标
     double eic = static_cast<double>(finalInstances);
     metrics["EIc"] = {"EIc", eic, "count", "实例化构件所表征的实体总数"};
-    metrics["IR"] = {"IR", finalInstancingRatio, "%", "实例化率"};
+    double ir = (initialNodes > 0) ? (static_cast<double>(finalInstances) / static_cast<double>(initialNodes)) : 0.0;  // IR = EIc/Eo
+    metrics["IR"] = {"IR", ir, "", "实例化率 IR=EIc/Eo"};
     double ic = static_cast<double>(instancedGroups);
     metrics["Ic"] = {"Ic", ic, "count", "优化后实例化构件的数量"};
-    double pic = (instancedGroups > 0) ? (static_cast<double>(finalInstances) / instancedGroups) : 0.0;
-    metrics["PIC"] = {"PIC", pic, "", "平均每个实例化构件表达的实体数量"};
+    double pic = (instancedGroups > 0) ? (static_cast<double>(finalInstances) / instancedGroups) : 0.0;  // PIC = EIc/Ic
+    metrics["PIC"] = {"PIC", pic, "", "平均每个实例化构件表达的实体数量 PIC=EIc/Ic"};
     metrics["Input Models"] = {"Input Models", static_cast<double>(inputModels), "count", "Number of input GLB files"};
     metrics["Initial Nodes"] = {"Initial Nodes", static_cast<double>(initialNodes), "count", "Initial scene graph nodes"};
     metrics["Initial Meshes"] = {"Initial Meshes", static_cast<double>(initialMeshes), "count", "Initial mesh primitives"};
