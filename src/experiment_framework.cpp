@@ -15,9 +15,7 @@ ExperimentDirectoryManager::ExperimentDirectoryManager(const std::filesystem::pa
     experimentNames_[ExperimentType::INSTANCING_STRATEGY] = "01_InstancingStrategy";
     experimentNames_[ExperimentType::LOD_STRATEGY] = "02_LODStrategy";
     experimentNames_[ExperimentType::HLOD_PARAMS] = "03_HLODParams";
-    experimentNames_[ExperimentType::END_TO_END] = "04_EndToEnd";
-    experimentNames_[ExperimentType::NON_UNIFORM_SCALE] = "05_NonUniformScale";
-    experimentNames_[ExperimentType::CROSS_GLB_HLOD] = "06_CrossGLBHLOD";
+    experimentNames_[ExperimentType::CROSS_GLB_HLOD] = "04_CrossGLBHLOD";
 }
 
 std::filesystem::path ExperimentDirectoryManager::createExperimentStructure(
@@ -409,7 +407,7 @@ bool ConfigGenerator::writeConfigJson(
 
     std::ofstream file(outputPath);
     if (!file.is_open()) return false;
-    file << j.dump(4);
+    file << j.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
     file.close();
     return true;
 }
@@ -657,9 +655,7 @@ std::string experimentTypeToString(ExperimentType type) {
         case ExperimentType::INSTANCING_STRATEGY: return "01_InstancingStrategy";
         case ExperimentType::LOD_STRATEGY: return "02_LODStrategy";
         case ExperimentType::HLOD_PARAMS: return "03_HLODParams";
-        case ExperimentType::END_TO_END: return "04_EndToEnd";
-        case ExperimentType::NON_UNIFORM_SCALE: return "05_NonUniformScale";
-        case ExperimentType::CROSS_GLB_HLOD: return "06_CrossGLBHLOD";
+        case ExperimentType::CROSS_GLB_HLOD: return "04_CrossGLBHLOD";
         default: return "Unknown";
     }
 }

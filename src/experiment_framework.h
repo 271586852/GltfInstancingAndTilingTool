@@ -17,9 +17,7 @@ enum class ExperimentType {
     INSTANCING_STRATEGY,    // 实验1：实例化检测策略
     LOD_STRATEGY,           // 实验2：LOD策略对比
     HLOD_PARAMS,            // 实验3：HLOD参数评估
-    END_TO_END,             // 实验4：端到端性能
-    NON_UNIFORM_SCALE,      // 实验5：非均匀缩放
-    CROSS_GLB_HLOD          // 实验6：跨GLB HLOD构建
+    CROSS_GLB_HLOD          // 实验4：跨GLB HLOD构建
 };
 
 // 数据集信息
@@ -185,7 +183,7 @@ public:
     );
 };
 
-// 实验6专用：跨GLB HLOD对比工具
+// 实验4专用：跨GLB HLOD对比工具
 class CrossGlbHLODExperiment {
 public:
     struct CrossGlbMetrics {

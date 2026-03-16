@@ -1,4 +1,4 @@
-﻿#ifndef EXPERIMENT6_RUNNER_H
+#ifndef EXPERIMENT6_RUNNER_H
 #define EXPERIMENT6_RUNNER_H
 
 #include "ToolConfiguration.h"
@@ -16,7 +16,7 @@ void processSingleGlbFullPipeline(
     const std::filesystem::path& outputDir,
     const ToolConfiguration& baseConfig);
 
-// Run complete Experiment 6
+// Run complete Experiment 4 (Cross-GLB HLOD)
 void runExperiment6(
     const ToolConfiguration& config,
     const std::vector<GltfInstancing::LoadedGltfModel>& loadedModels,

@@ -24,6 +24,8 @@
 #include <any>       // For std::any_cast
 #include <chrono>    // For run_manifest timestamp
 #include <ctime>     // For std::gmtime
+#include <stdexcept>
+#include <cctype>
 #include <CesiumGltf\ExtensionExtMeshGpuInstancing.h>
 
 #ifdef _WIN32
@@ -55,6 +57,9 @@ static void initWindowsConsoleUtf8() {
 
 // --- 按流水线阶段分层的输出路径 ---
 namespace OutputPaths {
+    inline std::filesystem::path experimentsDir(const ToolConfiguration& config) {
+        return std::filesystem::path(config.outputDirectory) / "experiments";
+    }
     inline std::filesystem::path instancingDir(const ToolConfiguration& config) {
         return std::filesystem::path(config.outputDirectory) / "01_instancing";
     }
@@ -114,6 +119,9 @@ namespace OutputPaths {
     }
     inline std::filesystem::path resultsCsv(const ToolConfiguration& config, const std::string& baseName) {
         return analysisDir(config) / (baseName + "_results.csv");
+    }
+    inline std::filesystem::path experimentsAnalysisDataDir(const ToolConfiguration& config) {
+        return experimentsDir(config) / "05_AnalysisData";
     }
     inline void ensureOutputDirectories(const ToolConfiguration& config) {
         std::filesystem::create_directories(instancingDir(config) / "analysis");
@@ -508,7 +516,7 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("Experiment Mode Options:");
     GltfInstancing::logInfo("  --enable-experiment-mode:            Enable experiment mode to organize outputs for comparison.");
     GltfInstancing::logInfo("  --use-symbolic-links:                Use symbolic links instead of copying files (saves disk space).");
-    GltfInstancing::logInfo("  --run-cross-glb-hlod-experiment:     Run Experiment 6: Cross-GLB HLOD comparison.");
+    GltfInstancing::logInfo("  --run-cross-glb-hlod-experiment:     Run Experiment 4: Cross-GLB HLOD comparison.");
     GltfInstancing::logInfo("  --experiment-dataset-name <name>:    Dataset name for experiment organization.");
     GltfInstancing::logInfo("  --experiment-strategy-id <id>:       Strategy ID for experiment organization.");
     GltfInstancing::logInfo("");
@@ -1006,6 +1014,316 @@ struct LodStats {
     size_t totalInstances;
     size_t totalVertices;
 };
+
+struct DetectedGlbStats {
+    double fileSizeMB = 0.0;
+    size_t entities = 0;
+    size_t uniqueMeshes = 0;
+    size_t totalInstances = 0;
+    size_t totalVertices = 0;
+    size_t instancingNodeCount = 0;
+};
+
+static size_t countInstancesFromInstancingNode(
+    const CesiumGltf::Node& node,
+    const CesiumGltf::Model& model) {
+    auto it = node.extensions.find("EXT_mesh_gpu_instancing");
+    if (it == node.extensions.end()) return 0;
+    try {
+        const auto* extData = std::any_cast<CesiumGltf::ExtensionExtMeshGpuInstancing>(&it->second);
+        if (!extData) return 0;
+        for (const auto& [_, accessorId] : extData->attributes) {
+            if (accessorId >= 0 && static_cast<size_t>(accessorId) < model.accessors.size()) {
+                return model.accessors[accessorId].count;
+            }
+        }
+    } catch (...) {}
+    return 0;
+}
+
+static DetectedGlbStats detectStatsFromLoadedModels(
+    const std::vector<GltfInstancing::LoadedGltfModel>& loadedModels) {
+    DetectedGlbStats stats;
+    for (const auto& loadedModel : loadedModels) {
+        const auto& model = loadedModel.model;
+        stats.uniqueMeshes += model.meshes.size();
+
+        // Count entities by traversing scene roots.
+        if (!model.scenes.empty()) {
+            int sceneIdx = model.scene >= 0 ? model.scene : 0;
+            if (sceneIdx >= 0 && static_cast<size_t>(sceneIdx) < model.scenes.size()) {
+                for (int32_t root : model.scenes[sceneIdx].nodes) {
+                    stats.entities += countTotalNodes(model, root);
+                }
+            }
+        }
+
+        for (const auto& mesh : model.meshes) {
+            for (const auto& prim : mesh.primitives) {
+                auto it = prim.attributes.find("POSITION");
+                if (it != prim.attributes.end()) {
+                    int32_t accIdx = it->second;
+                    if (accIdx >= 0 && static_cast<size_t>(accIdx) < model.accessors.size()) {
+                        stats.totalVertices += model.accessors[accIdx].count;
+                    }
+                }
+            }
+        }
+
+        for (const auto& node : model.nodes) {
+            size_t count = countInstancesFromInstancingNode(node, model);
+            if (count > 0) {
+                stats.instancingNodeCount++;
+                stats.totalInstances += count;
+            }
+        }
+    }
+    return stats;
+}
+
+static bool detectStatsFromGlbPath(const std::filesystem::path& glbPath, DetectedGlbStats& outStats) {
+    if (!std::filesystem::exists(glbPath)) return false;
+
+    try {
+        outStats.fileSizeMB = static_cast<double>(std::filesystem::file_size(glbPath)) / (1024.0 * 1024.0);
+    } catch (...) {
+        outStats.fileSizeMB = 0.0;
+    }
+
+    GltfInstancing::GlbReader reader;
+    std::set<std::filesystem::path> fileSet = { glbPath };
+    auto loadedModels = reader.loadGltfModels(fileSet);
+    if (loadedModels.empty()) return false;
+
+    auto detected = detectStatsFromLoadedModels(loadedModels);
+    outStats.entities = detected.entities;
+    outStats.uniqueMeshes = detected.uniqueMeshes;
+    outStats.totalInstances = detected.totalInstances;
+    outStats.totalVertices = detected.totalVertices;
+    outStats.instancingNodeCount = detected.instancingNodeCount;
+    return true;
+}
+
+static std::vector<std::filesystem::path> collectGlbFilesRecursively(const std::filesystem::path& dirPath) {
+    std::vector<std::filesystem::path> files;
+    if (!std::filesystem::exists(dirPath) || !std::filesystem::is_directory(dirPath)) {
+        return files;
+    }
+    try {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(dirPath)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".glb") {
+                files.push_back(entry.path());
+            }
+        }
+    } catch (...) {}
+    return files;
+}
+
+static int parseLevelFromFilename(const std::string& filename) {
+    // Match "LOD5" / "lod5"
+    for (size_t i = 0; i + 3 < filename.size(); ++i) {
+        char c0 = static_cast<char>(std::tolower(static_cast<unsigned char>(filename[i])));
+        char c1 = static_cast<char>(std::tolower(static_cast<unsigned char>(filename[i + 1])));
+        char c2 = static_cast<char>(std::tolower(static_cast<unsigned char>(filename[i + 2])));
+        if (c0 == 'l' && c1 == 'o' && c2 == 'd') {
+            size_t j = i + 3;
+            if (j < filename.size() && std::isdigit(static_cast<unsigned char>(filename[j]))) {
+                return filename[j] - '0';
+            }
+        }
+    }
+    // Match Quadtree tile naming "T2_x_y.glb"
+    if (filename.size() >= 2 && filename[0] == 'T' && std::isdigit(static_cast<unsigned char>(filename[1]))) {
+        return filename[1] - '0';
+    }
+    return -1;
+}
+
+static void writeExperimentsAnalysisDataCsvs(const ToolConfiguration& config) {
+    if (!config.enableExperimentMode) return;
+
+    const std::filesystem::path analysisDir = OutputPaths::experimentsAnalysisDataDir(config);
+    std::filesystem::create_directories(analysisDir);
+
+    // ---------- instancing.csv ----------
+    DetectedGlbStats inputStats;
+    DetectedGlbStats instancedStats;
+    DetectedGlbStats nonInstancedStats;
+
+    // Input stats: aggregate all GLB under input directory.
+    for (const auto& glb : collectGlbFilesRecursively(config.inputDirectory)) {
+        DetectedGlbStats s;
+        if (detectStatsFromGlbPath(glb, s)) {
+            inputStats.fileSizeMB += s.fileSizeMB;
+            inputStats.entities += s.entities;
+            inputStats.uniqueMeshes += s.uniqueMeshes;
+            inputStats.totalInstances += s.totalInstances;
+            inputStats.totalVertices += s.totalVertices;
+            inputStats.instancingNodeCount += s.instancingNodeCount;
+        }
+    }
+
+    detectStatsFromGlbPath(OutputPaths::instancedGlb(config), instancedStats);
+    detectStatsFromGlbPath(OutputPaths::nonInstancedGlb(config), nonInstancedStats);
+
+    DetectedGlbStats optimizedStats;
+    optimizedStats.fileSizeMB = instancedStats.fileSizeMB + nonInstancedStats.fileSizeMB;
+    optimizedStats.entities = instancedStats.entities + nonInstancedStats.entities;
+    optimizedStats.uniqueMeshes = instancedStats.uniqueMeshes + nonInstancedStats.uniqueMeshes;
+    optimizedStats.totalInstances = instancedStats.totalInstances + nonInstancedStats.totalInstances;
+    optimizedStats.totalVertices = instancedStats.totalVertices + nonInstancedStats.totalVertices;
+    optimizedStats.instancingNodeCount = instancedStats.instancingNodeCount + nonInstancedStats.instancingNodeCount;
+
+    double so = inputStats.fileSizeMB;
+    double sc = optimizedStats.fileSizeMB;
+    double cr = (so > 0.0) ? (sc / so) : 0.0;
+    double eo = static_cast<double>(inputStats.entities);
+    double ec = static_cast<double>(optimizedStats.entities);
+    double ecr = (eo > 0.0) ? (ec / eo) : 0.0;
+    double eic = static_cast<double>(optimizedStats.totalInstances);
+    double ir = (eo > 0.0) ? (eic / eo) : 0.0;
+    double ic = static_cast<double>(optimizedStats.instancingNodeCount);
+    double pic = (ic > 0.0) ? (eic / ic) : 0.0;
+
+    {
+        std::ofstream csv(analysisDir / "instancing.csv");
+        if (csv.is_open()) {
+            csv << "Metric,Value\n";
+            csv << "SO," << std::fixed << std::setprecision(6) << so << "\n";
+            csv << "SC," << std::fixed << std::setprecision(6) << sc << "\n";
+            csv << "CR," << std::fixed << std::setprecision(6) << cr << "\n";
+            csv << "Eo," << std::fixed << std::setprecision(6) << eo << "\n";
+            csv << "Ec," << std::fixed << std::setprecision(6) << ec << "\n";
+            csv << "ECR," << std::fixed << std::setprecision(6) << ecr << "\n";
+            csv << "EIc," << std::fixed << std::setprecision(6) << eic << "\n";
+            csv << "IR," << std::fixed << std::setprecision(6) << ir << "\n";
+            csv << "Ic," << std::fixed << std::setprecision(6) << ic << "\n";
+            csv << "PIC," << std::fixed << std::setprecision(6) << pic << "\n";
+            csv.close();
+        }
+    }
+
+    const double baselineInstancingRatio = (optimizedStats.uniqueMeshes > 0)
+        ? static_cast<double>(optimizedStats.totalInstances) / static_cast<double>(optimizedStats.uniqueMeshes)
+        : 0.0;
+
+    // ---------- LODInstancing.csv ----------
+    {
+        std::ofstream csv(analysisDir / "LODInstancing.csv");
+        if (csv.is_open()) {
+            csv << "Metric,File Size,Unique Meshes,Total Instances,Vertices,Reduction Rate,Instancing Ratio,Instancing Increase\n";
+
+            std::vector<std::filesystem::path> lodFiles;
+            auto instanceLodFiles = collectGlbFilesRecursively(OutputPaths::instanceLodDir(config));
+            auto nonInstanceLodFiles = collectGlbFilesRecursively(OutputPaths::nonInstanceLodDir(config));
+            lodFiles.insert(lodFiles.end(), instanceLodFiles.begin(), instanceLodFiles.end());
+            lodFiles.insert(lodFiles.end(), nonInstanceLodFiles.begin(), nonInstanceLodFiles.end());
+            std::sort(lodFiles.begin(), lodFiles.end());
+
+            for (const auto& f : lodFiles) {
+                DetectedGlbStats s;
+                if (!detectStatsFromGlbPath(f, s)) continue;
+
+                double reductionRate = (optimizedStats.fileSizeMB > 0.0)
+                    ? (1.0 - s.fileSizeMB / optimizedStats.fileSizeMB) * 100.0
+                    : 0.0;
+                double ratio = (s.uniqueMeshes > 0)
+                    ? static_cast<double>(s.totalInstances) / static_cast<double>(s.uniqueMeshes)
+                    : 0.0;
+                double increase = ratio - baselineInstancingRatio;
+
+                std::string metric = std::filesystem::relative(f, std::filesystem::path(config.outputDirectory)).generic_string();
+                csv << metric << ","
+                    << std::fixed << std::setprecision(6) << s.fileSizeMB << ","
+                    << s.uniqueMeshes << ","
+                    << s.totalInstances << ","
+                    << s.totalVertices << ","
+                    << std::fixed << std::setprecision(6) << reductionRate << ","
+                    << std::fixed << std::setprecision(6) << ratio << ","
+                    << std::fixed << std::setprecision(6) << increase << "\n";
+            }
+            csv.close();
+        }
+    }
+
+    // ---------- HLODInstancing.csv ----------
+    {
+        std::ofstream csv(analysisDir / "HLODInstancing.csv");
+        if (csv.is_open()) {
+            csv << "Metric,File Size,Unique Meshes,Total Instances,Vertices,Reduction Rate,Instancing Ratio,Instancing Increase\n";
+
+            std::map<int, DetectedGlbStats> levelStats;
+            auto hlodFiles = collectGlbFilesRecursively(OutputPaths::hlodDir(config));
+            for (const auto& f : hlodFiles) {
+                int level = parseLevelFromFilename(f.filename().string());
+                if (level < 0) continue;
+                DetectedGlbStats s;
+                if (!detectStatsFromGlbPath(f, s)) continue;
+                auto& agg = levelStats[level];
+                agg.fileSizeMB += s.fileSizeMB;
+                agg.entities += s.entities;
+                agg.uniqueMeshes += s.uniqueMeshes;
+                agg.totalInstances += s.totalInstances;
+                agg.totalVertices += s.totalVertices;
+                agg.instancingNodeCount += s.instancingNodeCount;
+            }
+
+            for (const auto& [level, s] : levelStats) {
+                double reductionRate = (optimizedStats.fileSizeMB > 0.0)
+                    ? (1.0 - s.fileSizeMB / optimizedStats.fileSizeMB) * 100.0
+                    : 0.0;
+                double ratio = (s.uniqueMeshes > 0)
+                    ? static_cast<double>(s.totalInstances) / static_cast<double>(s.uniqueMeshes)
+                    : 0.0;
+                double increase = ratio - baselineInstancingRatio;
+
+                csv << "HLOD_L" << level << ","
+                    << std::fixed << std::setprecision(6) << s.fileSizeMB << ","
+                    << s.uniqueMeshes << ","
+                    << s.totalInstances << ","
+                    << s.totalVertices << ","
+                    << std::fixed << std::setprecision(6) << reductionRate << ","
+                    << std::fixed << std::setprecision(6) << ratio << ","
+                    << std::fixed << std::setprecision(6) << increase << "\n";
+            }
+            csv.close();
+        }
+    }
+
+    GltfInstancing::logInfo("Experiment analysis data written to: " + analysisDir.string());
+}
+
+static void writeLodStrategyExperimentOutputs(const ToolConfiguration& config) {
+    if (!config.enableExperimentMode) return;
+
+    std::string datasetName = config.experimentDatasetName.empty() ? "default_dataset" : config.experimentDatasetName;
+    std::string strategyId = config.experimentStrategyId.empty() ? "InstancingLOD" : config.experimentStrategyId;
+
+    std::filesystem::path experimentsBaseDir = OutputPaths::experimentsDir(config);
+    ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
+
+    ExperimentFramework::StrategyInfo strategy;
+    strategy.id = strategyId;
+    strategy.name = "LOD Strategy";
+    strategy.description = "Instance LOD + Non-instance LOD analysis";
+    strategy.parameters["lod_levels"] = std::to_string(config.lodLevelCount);
+
+    auto expDir = expManager.createExperimentStructure(
+        ExperimentFramework::ExperimentType::LOD_STRATEGY,
+        datasetName, strategy);
+
+    std::vector<std::pair<std::string, std::filesystem::path>> filesToCopy = {
+        {"instance_lod_analysis.csv", OutputPaths::instanceLodAnalysisCsv(config)},
+        {"non_instance_lod_analysis.csv", OutputPaths::nonInstanceLodAnalysisCsv(config)},
+        {"non_instance_lod_instancing_analysis.csv", OutputPaths::nonInstanceLodInstancingAnalysisCsv(config)}
+    };
+
+    for (const auto& [name, src] : filesToCopy) {
+        if (std::filesystem::exists(src)) {
+            std::filesystem::copy_file(src, expDir / name, std::filesystem::copy_options::overwrite_existing);
+        }
+    }
+}
 
 // Helper function to get HLOD instancing detection parameters
 // If HLOD-specific parameters are not set, use Stage 1 parameters
@@ -1807,41 +2125,6 @@ int main(int argc, char* argv[]) {
     // (Generate CSV Report first)
     writeAnalysisCsv(config, loadedModels, detectionResult);
 
-    // 实验模式：生成非均匀缩放实验目录 (05_NonUniformScale) - 当启用时
-    if (config.enableExperimentMode && config.allowNonUniformScaleInstancing) {
-        std::string datasetName = config.experimentDatasetName.empty() ? "default_dataset" : config.experimentDatasetName;
-        std::string strategyId = config.experimentStrategyId.empty() ? "NonUniform_Allowed" : config.experimentStrategyId;
-
-        std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / "experiments";
-        ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
-
-        ExperimentFramework::StrategyInfo strategy;
-        strategy.id = strategyId;
-        strategy.name = "Non-Uniform Scale Instancing";
-        strategy.description = "Allow non-uniform scale transformations for instancing detection";
-        strategy.parameters["allow_non_uniform_scale"] = "true";
-        strategy.parameters["similarity_thresholds"] = config.similarityThresholds;
-        strategy.parameters["instance_limit"] = std::to_string(config.instanceLimit);
-
-        GltfInstancing::logInfo("Creating experiment structure for NON_UNIFORM_SCALE, dataset: " + datasetName + ", strategy: " + strategyId);
-        auto expDir = expManager.createExperimentStructure(
-            ExperimentFramework::ExperimentType::NON_UNIFORM_SCALE,
-            datasetName, strategy);
-        GltfInstancing::logInfo("Non-uniform scale experiment directory created at: " + expDir.string());
-
-        // 写入配置
-        std::filesystem::path configPath = expDir / "config.json";
-        ExperimentFramework::ConfigGenerator::writeConfigJson(configPath, config, strategy);
-
-        // 生成README
-        std::map<std::string, ExperimentFramework::MetricValue> metrics;
-        metrics["Non-Uniform Scale Enabled"] = {"Non-Uniform Scale", 1.0, "boolean", "Allow non-uniform scale instancing"};
-        metrics["Similarity Thresholds"] = {"Similarity", 0.0, "", config.similarityThresholds};
-        std::filesystem::path readmePath = expDir / "README.md";
-        ExperimentFramework::ReadmeGenerator::writeStrategyReadme(readmePath, strategy, metrics);
-        GltfInstancing::logInfo("Non-uniform scale experiment README written to: " + readmePath.string());
-    }
-
     const std::string instancedGlbBase = "instanced";
     const std::string nonInstancedGlbBase = "non_instanced";
     std::vector<std::filesystem::path> stage1_outputGlbs;
@@ -2393,9 +2676,9 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Experiment 6: Cross-GLB HLOD Comparison (if enabled)
+        // Experiment 4: Cross-GLB HLOD Comparison (if enabled)
         if (config.enableExperimentMode && config.runCrossGlbHLODExperiment) {
-            GltfInstancing::logInfo("Running Experiment 6: Cross-GLB HLOD Comparison...");
+            GltfInstancing::logInfo("Running Experiment 4: Cross-GLB HLOD Comparison...");
 
             // Prepare input GLB list
             std::vector<std::string> inputGlbs;
@@ -2412,63 +2695,13 @@ int main(int argc, char* argv[]) {
 
                 Experiment6::runExperiment6(config, loadedModels, inputGlbs, datasetName, expManager);
             } else {
-                GltfInstancing::logWarning("Experiment 6 requires at least 2 GLB files. Skipping.");
+                GltfInstancing::logWarning("Experiment 4 requires at least 2 GLB files. Skipping.");
             }
         }
 
-        // 实验模式：生成端到端实验目录 (04_EndToEnd) - 汇总所有阶段结果
-        if (config.enableExperimentMode) {
-            std::string datasetName = config.experimentDatasetName.empty() ? "default_dataset" : config.experimentDatasetName;
-            std::string strategyId = config.experimentStrategyId.empty() ? "FullPipeline" : config.experimentStrategyId;
-
-            std::filesystem::path experimentsBaseDir = std::filesystem::path(config.outputDirectory) / "experiments";
-            ExperimentFramework::ExperimentDirectoryManager expManager(experimentsBaseDir);
-
-            ExperimentFramework::StrategyInfo strategy;
-            strategy.id = strategyId;
-            strategy.name = "End-to-End Full Pipeline";
-            strategy.description = "Complete pipeline: Instancing + LOD + HLOD";
-            strategy.parameters["instancing_enabled"] = "true";
-            strategy.parameters["lod_enabled"] = std::to_string(config.enableInstanceLodGeneration);
-            strategy.parameters["hlod_enabled"] = std::to_string(config.enableQuadtree);
-            strategy.parameters["similarity_thresholds"] = config.similarityThresholds;
-
-            GltfInstancing::logInfo("Creating experiment structure for END_TO_END, dataset: " + datasetName + ", strategy: " + strategyId);
-            auto expDir = expManager.createExperimentStructure(
-                ExperimentFramework::ExperimentType::END_TO_END,
-                datasetName, strategy);
-            GltfInstancing::logInfo("End-to-end experiment directory created at: " + expDir.string());
-
-            // 汇总所有阶段的CSV文件到实验目录（输出文件名标明 instance / non-instance）
-            std::vector<std::pair<std::string, std::filesystem::path>> filesToCopy = {
-                {"instancing_analysis.csv", OutputPaths::instancingAnalysisCsv(config)},
-                {"instance_lod_analysis.csv", OutputPaths::instanceLodAnalysisCsv(config)},
-                {"non_instance_lod_analysis.csv", OutputPaths::nonInstanceLodAnalysisCsv(config)},
-                {"non_instance_lod_instancing_analysis.csv", OutputPaths::nonInstanceLodInstancingAnalysisCsv(config)},
-                {"hlod_analysis.csv", OutputPaths::hlodAnalysisCsv(config)}
-            };
-
-            for (const auto& [filename, sourcePath] : filesToCopy) {
-                if (std::filesystem::exists(sourcePath)) {
-                    std::filesystem::path destPath = expDir / filename;
-                    std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing);
-                    GltfInstancing::logInfo("Copied " + filename + " to end-to-end experiment directory");
-                }
-            }
-
-            // 写入配置
-            std::filesystem::path configPath = expDir / "config.json";
-            ExperimentFramework::ConfigGenerator::writeConfigJson(configPath, config, strategy);
-
-            // 生成README
-            std::map<std::string, ExperimentFramework::MetricValue> e2eMetrics;
-            e2eMetrics["Instancing Enabled"] = {"Instancing", 1.0, "boolean", "GPU instancing enabled"};
-            e2eMetrics["LOD Enabled"] = {"LOD", config.enableInstanceLodGeneration ? 1.0 : 0.0, "boolean", "LOD generation enabled"};
-            e2eMetrics["HLOD Enabled"] = {"HLOD", config.enableQuadtree ? 1.0 : 0.0, "boolean", "Quadtree HLOD enabled"};
-            std::filesystem::path readmePath = expDir / "README.md";
-            ExperimentFramework::ReadmeGenerator::writeStrategyReadme(readmePath, strategy, e2eMetrics);
-            GltfInstancing::logInfo("End-to-end experiment README written to: " + readmePath.string());
-        }
+        // 统一写入 LOD 策略实验目录（02_LODStrategy）与全局分析数据（05_AnalysisData）
+        writeLodStrategyExperimentOutputs(config);
+        writeExperimentsAnalysisDataCsvs(config);
 
         GltfInstancing::logInfo("GltfInstancingTool finished successfully.");
         return 0;

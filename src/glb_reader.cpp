@@ -1,4 +1,4 @@
-﻿#define GLM_ENABLE_EXPERIMENTAL
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/transform.hpp>
 
@@ -41,7 +41,16 @@ namespace GltfInstancing {
             reinterpret_cast<const std::byte*>(bytes->data()),
             bytes->size()
         );
-        CesiumGltfReader::GltfReaderResult readerResult = _gltfReader.readGltf(byte_span);
+        CesiumGltfReader::GltfReaderResult readerResult;
+        try {
+            readerResult = _gltfReader.readGltf(byte_span);
+        } catch (const nlohmann::json::type_error& e) {
+            logError("Invalid UTF-8 in GLB JSON chunk: " + glbPath.string() + " - " + std::string(e.what()));
+            return std::nullopt;
+        } catch (const std::exception& e) {
+            logError("Exception while reading GLB: " + glbPath.string() + " - " + std::string(e.what()));
+            return std::nullopt;
+        }
 
         if (!readerResult.model) {
             logError("Failed to parse GLB: " + glbPath.string());
@@ -144,6 +153,10 @@ namespace GltfInstancing {
         }
         catch (const nlohmann::json::parse_error& e) {
             logError("Failed to parse tileset JSON: " + tilesetPath.string() + " - " + e.what());
+            return {};
+        }
+        catch (const nlohmann::json::type_error& e) {
+            logError("Invalid UTF-8 in tileset JSON: " + tilesetPath.string() + " - " + e.what());
             return {};
         }
         catch (const std::exception& e) {

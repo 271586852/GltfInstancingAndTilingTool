@@ -1,0 +1,54 @@
+# =============================================================================
+# 严格策略（Strict）
+# 目标：降低误合并风险，保证实例化结果更保守、更可靠
+# =============================================================================
+
+# --- 基础 ---
+input_directory = D:/Data/BIM/住宅标准层
+output_directory = D:/Experiments/output/01_strict
+merge_all_glb = false
+mesh_segmentation = false
+
+# --- Stage 1 实例化检测（严格）---
+instance_limit = 4
+allow_non_uniform_scale_instancing = false
+semantic_hash_fields = category,family,type
+similarity_thresholds = 0.98,0.95,0.92,0.90,0.88
+hausdorff_max_sample_points = 4000
+allow_unknown_cross_mesh_clustering = false
+material_filter_mode = hash
+semantic_data_path = D:/Data/semantic
+
+# --- Instance LOD ---
+enable_instance_lod_generation = true
+lod_level_count = 5
+target_screen_sse = 16.0
+instance_lod_similarity_thresholds = 0.98,0.95,0.92,0.90,0.88
+instance_lod_instance_limit = -1
+instance_lod_material_filter_mode = hash
+lod4_size_tolerance = 0.03
+lod3_aspect_ratio_tolerance = 0.12
+enable_semantic_check = true
+enable_geometric_check = true
+
+# --- Non-instanced LOD ---
+enable_non_instanced_lod_generation = false
+enable_non_instanced_lod_instancing = false
+enable_non_instanced_lod_clustering = false
+non_instanced_lod_similarity_thresholds = 0.98,0.95,0.92
+
+# --- Quadtree / HLOD ---
+enable_quadtree = true
+quadtree_max_depth = 6
+quadtree_max_objects_per_tile = 50
+enable_hlod_clustering = false
+hlod_similarity_thresholds = 0.75,0.72,0.69,0.66,0.63
+hlod_instance_limit = 4
+hlod_allow_non_uniform_scale_instancing = false
+
+# --- 实验模式 ---
+enable_experiment_mode = true
+use_symbolic_links = false
+run_cross_glb_hlod_experiment = true
+experiment_dataset_name = 多楼层建筑
+experiment_strategy_id = 01_Strict

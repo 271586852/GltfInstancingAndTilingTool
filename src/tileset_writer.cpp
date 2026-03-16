@@ -1,4 +1,4 @@
-﻿#include "tileset_writer.h"
+#include "tileset_writer.h"
 #include "utilities.h" // For logging and BoundingBox::toTilesetBoundingVolumeBox
 
 #include <sstream>
@@ -430,7 +430,7 @@ namespace GltfInstancing {
             GltfInstancing::logError("Failed to write wrapper tileset to: " + wrapperTilesetPath.string());
             return false;
         }
-        outFile << tilesetJson.dump(4); // Pretty print with 4 spaces
+        outFile << tilesetJson.dump(4, ' ', false, nlohmann::json::error_handler_t::replace); // Pretty print with 4 spaces
         outFile.close();
         
         return true;

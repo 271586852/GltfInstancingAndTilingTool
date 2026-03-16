@@ -85,8 +85,8 @@ struct ToolConfiguration {
     std::string experiment2Name = "experiment2_lod_comparison";
     std::string experiment3Name = "experiment3_mixed_hlod";
 
-    // --- Experiment 6: Cross-GLB HLOD Configuration ---
-    bool runCrossGlbHLODExperiment = false;     // 是否运行实验6
+    // --- Experiment 4: Cross-GLB HLOD Configuration ---
+    bool runCrossGlbHLODExperiment = false;     // 是否运行实验4（Cross-GLB HLOD）
     std::string experimentDatasetName = "";      // 当前数据集名称
     std::string experimentStrategyId = "";       // 当前策略ID
 

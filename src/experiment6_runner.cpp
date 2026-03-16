@@ -331,7 +331,7 @@ bool writeInlineAggregatedTileset(
     if (!outFile.is_open()) {
         return false;
     }
-    outFile << tilesetJson.dump(2);
+    outFile << tilesetJson.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
     outFile.close();
     GltfInstancing::logInfo("[" + strategyName + "] Inline aggregated tileset: " + outputPath.string());
     return true;
@@ -429,7 +429,7 @@ void writeUnifiedTileset(const std::filesystem::path& outputDir, const std::stri
 
     std::ofstream outFile(unifiedTilesetPath);
     if (outFile.is_open()) {
-        outFile << tilesetJson.dump(2);
+        outFile << tilesetJson.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
         outFile.close();
         GltfInstancing::logInfo("[" + strategyName + "] Unified tileset: " + unifiedTilesetPath.string());
     }
@@ -606,7 +606,7 @@ void processSingleGlbFullPipeline(
     writeUnifiedTileset(outputDir, "B_SeparateHLOD_" + glbName);
 }
 
-// Run complete Experiment 6
+// Run complete Experiment 4 (Cross-GLB HLOD)
 void runExperiment6(
     const ToolConfiguration& config,
     const std::vector<GltfInstancing::LoadedGltfModel>& loadedModels,
@@ -912,7 +912,7 @@ void runExperiment6(
 
             std::ofstream outFile(aggregatedTilesetPath);
             if (outFile.is_open()) {
-                outFile << tilesetJson.dump(2);
+                outFile << tilesetJson.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
                 outFile.close();
                 GltfInstancing::logInfo("Aggregated tileset: " + aggregatedTilesetPath.string());
             }
@@ -1002,7 +1002,7 @@ void runExperiment6(
     ConfigGenerator::writeConfigJson(separateOutputDir / "config.json", config, separateStrategy);
     ConfigGenerator::writeConfigJson(separateSingleEntryOutputDir / "config.json", config, separateSingleEntryStrategy);
 
-    GltfInstancing::logInfo("Experiment 6 completed. Results at: " + comparisonDir.string());
+    GltfInstancing::logInfo("Experiment 4 completed. Results at: " + comparisonDir.string());
 }
 
 // Collect metrics from output directory

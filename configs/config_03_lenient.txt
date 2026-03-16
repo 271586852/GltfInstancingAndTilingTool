@@ -1,0 +1,54 @@
+# =============================================================================
+# 宽松策略（Lenient）
+# 目标：最大化实例化合并率，允许更宽松的匹配条件
+# =============================================================================
+
+# --- 基础 ---
+input_directory = D:/Data/BIM/住宅标准层
+output_directory = D:/Experiments/output/03_lenient
+merge_all_glb = false
+mesh_segmentation = false
+
+# --- Stage 1 实例化检测（宽松）---
+instance_limit = 2
+allow_non_uniform_scale_instancing = true
+semantic_hash_fields = category,family
+similarity_thresholds = 0.90,0.85,0.80,0.75,0.70
+hausdorff_max_sample_points = 1200
+allow_unknown_cross_mesh_clustering = true
+material_filter_mode = none
+semantic_data_path = D:/Data/semantic
+
+# --- Instance LOD ---
+enable_instance_lod_generation = true
+lod_level_count = 5
+target_screen_sse = 16.0
+instance_lod_similarity_thresholds = 0.90,0.85,0.80,0.75,0.70
+instance_lod_instance_limit = -1
+instance_lod_material_filter_mode = none
+lod4_size_tolerance = 0.08
+lod3_aspect_ratio_tolerance = 0.30
+enable_semantic_check = true
+enable_geometric_check = true
+
+# --- Non-instanced LOD ---
+enable_non_instanced_lod_generation = false
+enable_non_instanced_lod_instancing = false
+enable_non_instanced_lod_clustering = false
+non_instanced_lod_similarity_thresholds = 0.90,0.85,0.80
+
+# --- Quadtree / HLOD ---
+enable_quadtree = true
+quadtree_max_depth = 6
+quadtree_max_objects_per_tile = 50
+enable_hlod_clustering = true
+hlod_similarity_thresholds = 0.65,0.60,0.55,0.50,0.45
+hlod_instance_limit = 2
+hlod_allow_non_uniform_scale_instancing = true
+
+# --- 实验模式 ---
+enable_experiment_mode = true
+use_symbolic_links = false
+run_cross_glb_hlod_experiment = true
+experiment_dataset_name = 多楼层建筑
+experiment_strategy_id = 03_Lenient

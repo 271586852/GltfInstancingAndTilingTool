@@ -998,7 +998,7 @@ namespace GltfInstancing {
                                         if (it.value().is_number_integer()) {
                                             newGpuInstancingExtensionStruct.attributes[it.key()] = it.value().get<int32_t>();
                                         } else {
-                                            logError("EXT_mesh_gpu_instancing: Attribute '" + it.key() + "' for mesh " + std::to_string(meshIdx) + " has non-integer value '" + it.value().dump() + "' during struct conversion. Skipping attribute.");
+                                            logError("EXT_mesh_gpu_instancing: Attribute '" + it.key() + "' for mesh " + std::to_string(meshIdx) + " has non-integer value '" + it.value().dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + "' during struct conversion. Skipping attribute.");
                                         }
                                     }
 
