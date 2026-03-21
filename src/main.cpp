@@ -262,6 +262,23 @@ bool loadConfigurationFromFile(const std::string& configFilePath, ToolConfigurat
                 } else {
                     GltfInstancing::logWarning("Invalid boolean value for 'enable_icp_alignment' in config file (line " + std::to_string(lineNumber) + "): " + value);
                 }
+            } else if (key == "enable_aabb_coarse_filter") {
+                std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+                if (value == "true" || value == "1" || value == "yes") {
+                    config.enableAabbCoarseFilter = true;
+                } else if (value == "false" || value == "0" || value == "no") {
+                    config.enableAabbCoarseFilter = false;
+                } else {
+                    GltfInstancing::logWarning("Invalid boolean value for 'enable_aabb_coarse_filter' in config file (line " + std::to_string(lineNumber) + "): " + value);
+                }
+            } else if (key == "aabb_aspect_ratio_tolerance") {
+                try {
+                    double v = std::stod(value);
+                    if (v >= 0.0 && v <= 1.0) config.aabbAspectRatioTolerance = v;
+                    else GltfInstancing::logWarning("aabb_aspect_ratio_tolerance out of range [0,1]: " + value);
+                } catch (const std::exception& e) {
+                    GltfInstancing::logWarning("Invalid value for 'aabb_aspect_ratio_tolerance' in config file (line " + std::to_string(lineNumber) + "): " + value);
+                }
             } else if (key == "allow_unknown_cross_mesh_clustering") {
                 std::transform(value.begin(), value.end(), value.begin(), ::tolower);
                 if (value == "true" || value == "1" || value == "yes") {
@@ -515,6 +532,8 @@ void printUsage(const char* progName) {
     GltfInstancing::logInfo("  --instancing-detection-mode <mode>:  semantic_material_geometric (default).");
     GltfInstancing::logInfo("  --hausdorff-max-sample-points <n>:   Max points per mesh for geometric similarity. 0 disables sampling. Default: 2000.");
     GltfInstancing::logInfo("  --enable-icp-alignment:              Enable ICP to align point clouds before Hausdorff (handles mesh local rotation). Default: false.");
+    GltfInstancing::logInfo("  --enable-aabb-coarse-filter:         Enable AABB aspect ratio coarse filter before ICP/Hausdorff. Default: false.");
+    GltfInstancing::logInfo("  --aabb-aspect-ratio-tolerance <val>: Max |eA[i]-eB[i]| for AABB coarse filter. Default: 0.25.");
     GltfInstancing::logInfo("  --material-filter-mode <mode>:       Material filter for Hausdorff: none, hash, index. Default: none.");
     GltfInstancing::logInfo("  --allow-unknown-cross-mesh-clustering: Allow semantic 'unknown' to cluster across different meshes. Default: false.");
     GltfInstancing::logInfo("  --mesh-segmentation:                 Export each mesh as a separate GLB file. Default: false.");
@@ -1752,6 +1771,25 @@ int main(int argc, char* argv[]) {
             config.enableIcpAlignment = true;
             GltfInstancing::logDebug("Command-line override: ICP alignment enabled.");
         }
+        else if (arg == "--enable-aabb-coarse-filter") {
+            config.enableAabbCoarseFilter = true;
+            GltfInstancing::logDebug("Command-line override: AABB coarse filter enabled.");
+        }
+        else if (arg == "--aabb-aspect-ratio-tolerance") {
+            if (argIndex + 1 < argc) {
+                try {
+                    double v = std::stod(argv[++argIndex]);
+                    if (v >= 0.0 && v <= 1.0) {
+                        config.aabbAspectRatioTolerance = v;
+                        GltfInstancing::logDebug("Command-line override: aabb_aspect_ratio_tolerance = " + std::to_string(v));
+                    } else GltfInstancing::logWarning("--aabb-aspect-ratio-tolerance out of range [0,1]: " + std::string(argv[argIndex]));
+                } catch (const std::exception& e) {
+                    GltfInstancing::logError("Invalid --aabb-aspect-ratio-tolerance value."); printUsage(argv[0]); return 1;
+                }
+            } else {
+                GltfInstancing::logError("--aabb-aspect-ratio-tolerance requires a value."); printUsage(argv[0]); return 1;
+            }
+        }
         else if (arg == "--material-filter-mode") {
             if (argIndex + 1 < argc) {
                 std::string mode = argv[++argIndex];
@@ -2114,7 +2152,7 @@ int main(int argc, char* argv[]) {
         }
         double threshold = config.similarityThresholdsParsed.empty() ? 0.95 : config.similarityThresholdsParsed[0];
         GltfInstancing::SemanticMaterialGeometricDetector detector(
-            &semanticParser, config.semanticHashFields, threshold, config.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering, config.materialFilterMode, config.enableIcpAlignment);
+            &semanticParser, config.semanticHashFields, threshold, config.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering, config.materialFilterMode, config.enableIcpAlignment, config.enableAabbCoarseFilter, config.aabbAspectRatioTolerance);
         detectionResult = detector.detect(loadedModels);
     }
     GltfInstancing::logInfo("Stage 1: Instancing detection finished. Generating optimization analysis outputs...");
@@ -2328,7 +2366,7 @@ int main(int argc, char* argv[]) {
                             thresh = config.nonInstancedLodSimilarityThresholdsParsed[idx];
                         }
                         GltfInstancing::SemanticMaterialGeometricDetector lodDetector(
-                            &lodSemanticParser, config.semanticHashFields, thresh, hlodParams.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering, config.materialFilterMode, config.enableIcpAlignment);
+                            &lodSemanticParser, config.semanticHashFields, thresh, hlodParams.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering, config.materialFilterMode, config.enableIcpAlignment, config.enableAabbCoarseFilter, config.aabbAspectRatioTolerance);
                         lodDetectionResult = lodDetector.detect(lodModels);
 
                         if (config.enableNonInstancedLodClustering && !lodDetectionResult.instancedGroups.empty()) {
@@ -2339,6 +2377,8 @@ int main(int argc, char* argv[]) {
                                 : std::vector<double>{ 0.90, 0.85 };
                             clusterConfig.hausdorffMaxSamplePoints = config.hausdorffMaxSamplePoints;
                             clusterConfig.enableIcpAlignment = config.enableIcpAlignment;
+                            clusterConfig.enableAabbCoarseFilter = config.enableAabbCoarseFilter;
+                            clusterConfig.aabbAspectRatioTolerance = config.aabbAspectRatioTolerance;
                             clusterConfig.instanceLimit = hlodParams.instanceLimit;
                             clusterConfig.materialFilterMode = config.materialFilterMode;
                             clusterConfig.lod4_sizeTolerance = config.lod4SizeTolerance;
@@ -2503,6 +2543,8 @@ int main(int argc, char* argv[]) {
             : std::vector<double>{ 0.90, 0.85, 0.80, 0.75 };
         lodConfig.hausdorffMaxSamplePoints = config.hausdorffMaxSamplePoints;
         lodConfig.enableIcpAlignment = config.enableIcpAlignment;
+        lodConfig.enableAabbCoarseFilter = config.enableAabbCoarseFilter;
+        lodConfig.aabbAspectRatioTolerance = config.aabbAspectRatioTolerance;
         lodConfig.instanceLimit = config.instanceLodInstanceLimit >= 1 ? config.instanceLodInstanceLimit : config.instanceLimit;
         lodConfig.materialFilterMode = config.instanceLodMaterialFilterMode;
         lodConfig.lod4_sizeTolerance = config.lod4SizeTolerance;

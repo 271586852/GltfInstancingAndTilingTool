@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 #include <nanoflann.hpp>
 #include <algorithm>
+#include <functional>
 #include "svd3.h"
 #include <limits>
 #include <cmath>
@@ -204,6 +205,38 @@ namespace GltfInstancing {
                 if (maxDelta < convergenceThreshold) break;
             }
         }
+
+        // Returns sorted extents (descending) from normalized point cloud. Returns empty if degenerate.
+        void getSortedExtents(const std::vector<glm::dvec3>& points, double outExtents[3]) {
+            if (points.empty()) { outExtents[0] = outExtents[1] = outExtents[2] = 0; return; }
+            glm::dvec3 minP(std::numeric_limits<double>::max());
+            glm::dvec3 maxP(std::numeric_limits<double>::lowest());
+            for (const auto& p : points) {
+                minP = glm::min(minP, p);
+                maxP = glm::max(maxP, p);
+            }
+            glm::dvec3 ext = maxP - minP;
+            double arr[3] = { ext.x, ext.y, ext.z };
+            std::sort(arr, arr + 3, std::greater<double>());
+            outExtents[0] = arr[0]; outExtents[1] = arr[1]; outExtents[2] = arr[2];
+        }
+
+        // AABB coarse filter: reject if sorted extents differ by more than tolerance. Returns true to reject (not similar).
+        bool aabbCoarseFilterReject(
+            const std::vector<glm::dvec3>& ptsA,
+            const std::vector<glm::dvec3>& ptsB,
+            double tolerance)
+        {
+            double extA[3], extB[3];
+            getSortedExtents(ptsA, extA);
+            getSortedExtents(ptsB, extB);
+            double maxExt = std::max({ extA[0], extB[0], 1e-9 });
+            if (maxExt < 1e-9) return false;  // degenerate, skip filter
+            for (int i = 0; i < 3; ++i) {
+                if (std::abs(extA[i] - extB[i]) > tolerance) return true;
+            }
+            return false;
+        }
     }
 
     double computeHausdorffDistance(
@@ -228,7 +261,9 @@ namespace GltfInstancing {
         const CesiumGltf::Model& modelB,
         const CesiumGltf::Mesh& meshB,
         size_t maxSamplePoints,
-        bool enableIcpAlignment)
+        bool enableIcpAlignment,
+        bool enableAabbCoarseFilter,
+        double aabbAspectRatioTolerance)
     {
         std::vector<glm::dvec3> ptsA = extractMeshPositions(modelA, meshA);
         std::vector<glm::dvec3> ptsB = extractMeshPositions(modelB, meshB);
@@ -239,6 +274,9 @@ namespace GltfInstancing {
 
         normalizePointCloud(ptsA);
         normalizePointCloud(ptsB);
+
+        if (enableAabbCoarseFilter && aabbCoarseFilterReject(ptsA, ptsB, aabbAspectRatioTolerance))
+            return -1.0;
 
         if (enableIcpAlignment) {
             icpAlignPointCloud(ptsA, ptsB);

@@ -184,16 +184,16 @@ namespace GltfInstancing {
                             const auto& candMesh = candModel.model.meshes[candExt->sourceMeshIndex];
                             if (_config.materialFilterMode == "hash") {
                                 if (getMeshMaterialHash(candModel.model, candMesh) == getMeshMaterialHash(repModel.model, repMesh)) {
-                                    double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints, _config.enableIcpAlignment);
+                                    double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints, _config.enableIcpAlignment, _config.enableAabbCoarseFilter, _config.aabbAspectRatioTolerance);
                                     merge = (sim >= 0 && sim >= threshold);
                                 }
                             } else if (_config.materialFilterMode == "index") {
                                 if (getMeshMaterialIndex(candModel.model, candMesh) == getMeshMaterialIndex(repModel.model, repMesh)) {
-                                    double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints, _config.enableIcpAlignment);
+                                    double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints, _config.enableIcpAlignment, _config.enableAabbCoarseFilter, _config.aabbAspectRatioTolerance);
                                     merge = (sim >= 0 && sim >= threshold);
                                 }
                             } else {
-                                double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints, _config.enableIcpAlignment);
+                                double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints, _config.enableIcpAlignment, _config.enableAabbCoarseFilter, _config.aabbAspectRatioTolerance);
                                 merge = (sim >= 0 && sim >= threshold);
                             }
                         }
@@ -286,16 +286,16 @@ namespace GltfInstancing {
                             const auto& candMesh = candModel.model.meshes[candExt->sourceMeshIndex];
                             if (_config.materialFilterMode == "hash") {
                                 if (getMeshMaterialHash(candModel.model, candMesh) == getMeshMaterialHash(repModel.model, repMesh)) {
-                                    double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints, _config.enableIcpAlignment);
+                                    double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints, _config.enableIcpAlignment, _config.enableAabbCoarseFilter, _config.aabbAspectRatioTolerance);
                                     merge = (sim >= 0 && sim >= threshold);
                                 }
                             } else if (_config.materialFilterMode == "index") {
                                 if (getMeshMaterialIndex(candModel.model, candMesh) == getMeshMaterialIndex(repModel.model, repMesh)) {
-                                    double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints, _config.enableIcpAlignment);
+                                    double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints, _config.enableIcpAlignment, _config.enableAabbCoarseFilter, _config.aabbAspectRatioTolerance);
                                     merge = (sim >= 0 && sim >= threshold);
                                 }
                             } else {
-                                double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints, _config.enableIcpAlignment);
+                                double sim = computeMeshSimilarity(candModel.model, candMesh, repModel.model, repMesh, _config.hausdorffMaxSamplePoints, _config.enableIcpAlignment, _config.enableAabbCoarseFilter, _config.aabbAspectRatioTolerance);
                                 merge = (sim >= 0 && sim >= threshold);
                             }
                         }

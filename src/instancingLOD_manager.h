@@ -55,6 +55,8 @@ namespace GltfInstancing {
         std::vector<double> similarityThresholdsPerLevel = { 0.90, 0.85, 0.80, 0.75 };
         size_t hausdorffMaxSamplePoints = 2000;
         bool enableIcpAlignment = false;
+        bool enableAabbCoarseFilter = true;
+        double aabbAspectRatioTolerance = 0.25;
         int instanceLimit = 2;
         std::string materialFilterMode = "none"; // "none", "hash", "index"
         double lod4_sizeTolerance = 0.05;  // 仅当 similarityThresholdsPerLevel 为空时用作体积聚类回退

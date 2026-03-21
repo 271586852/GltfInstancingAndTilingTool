@@ -28,7 +28,9 @@ namespace GltfInstancing {
         size_t hausdorffMaxSamplePoints,
         bool allowUnknownCrossMeshClustering,
         const std::string& materialFilterMode,
-        bool enableIcpAlignment)
+        bool enableIcpAlignment,
+        bool enableAabbCoarseFilter,
+        double aabbAspectRatioTolerance)
         : _semanticParser(semanticParser)
         , _similarityThreshold(std::max(0.0, std::min(1.0, similarityThreshold)))
         , _instanceLimit(instanceLimit > 0 ? instanceLimit : 2)
@@ -36,6 +38,8 @@ namespace GltfInstancing {
         , _allowUnknownCrossMeshClustering(allowUnknownCrossMeshClustering)
         , _materialFilterMode(materialFilterMode.empty() ? "none" : materialFilterMode)
         , _enableIcpAlignment(enableIcpAlignment)
+        , _enableAabbCoarseFilter(enableAabbCoarseFilter)
+        , _aabbAspectRatioTolerance(aabbAspectRatioTolerance)
     {
         _semanticHashFieldNames = splitAndTrim(semanticHashFields, ',');
         // 空字符串表示不做语义约束，所有 mesh 归入同一组进行材质+几何判定
@@ -236,7 +240,7 @@ namespace GltfInstancing {
                             continue;
                     }
 
-                    double sim = computeMeshSimilarity(cm->model, meshCur, rm->model, meshRep, _hausdorffMaxSamplePoints, _enableIcpAlignment);
+                    double sim = computeMeshSimilarity(cm->model, meshCur, rm->model, meshRep, _hausdorffMaxSamplePoints, _enableIcpAlignment, _enableAabbCoarseFilter, _aabbAspectRatioTolerance);
                     if (++similarityCount % logInterval == 0)
                         GltfInstancing::logInfo("[实例检测]  已比较 " + std::to_string(similarityCount) + " 次 (组 " + std::to_string(groupIdx) + "/" + std::to_string(totalGroups) + ")");
                     if (sim >= 0 && sim >= _similarityThreshold) {

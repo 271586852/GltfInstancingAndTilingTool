@@ -28,6 +28,10 @@ struct ToolConfiguration {
     size_t hausdorffMaxSamplePoints = 2000;
     // If true, run ICP to align point clouds before Hausdorff (handles mesh local rotation). Default false.
     bool enableIcpAlignment = false;
+    // If true, reject mesh pairs whose normalized AABB aspect ratios differ by more than aabbAspectRatioTolerance. Default false.
+    bool enableAabbCoarseFilter = true;
+    // Max allowed |eA[i]-eB[i]| for sorted AABB extents; used when enableAabbCoarseFilter is true. Default 0.25.
+    double aabbAspectRatioTolerance = 0.25;
     // If false, semantic key "unknown" will NOT do cross-mesh clustering.
     bool allowUnknownCrossMeshClustering = false;
     // Material filter mode for Hausdorff comparison: "none" (no filter), "hash" (same material+texture hash), "index" (same material index)

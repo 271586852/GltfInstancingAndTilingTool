@@ -49,6 +49,12 @@ hausdorff_max_sample_points = 2000
 # 是否启用 ICP 点云配准：在 Hausdorff 比较前对齐旋转，处理 mesh 局部旋转差异。默认 false
 # enable_icp_alignment = false
 
+# 是否启用 AABB 长宽比粗筛：归一化后、ICP 前快速排除形状差异明显的 mesh 对。默认 false
+# enable_aabb_coarse_filter = false
+
+# AABB 粗筛阈值：归一化 AABB 各维 extent 的绝对差上限，超过则判定不相似。默认 0.25，建议 0.15～0.4
+# aabb_aspect_ratio_tolerance = 0.25
+
 # 语义为 Unknown 的 mesh 是否允许跨 mesh 聚类。默认 false
 allow_unknown_cross_mesh_clustering = false
 

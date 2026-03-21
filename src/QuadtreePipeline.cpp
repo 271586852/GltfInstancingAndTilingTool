@@ -835,7 +835,9 @@ namespace QuadtreePipeline {
                 _config.hausdorffMaxSamplePoints,
                 _config.allowUnknownCrossMeshClustering,
                 _config.materialFilterMode,
-                _config.enableIcpAlignment);
+                _config.enableIcpAlignment,
+                _config.enableAabbCoarseFilter,
+                _config.aabbAspectRatioTolerance);
             result = detector.detect(models);
 
             if (_config.enableHlodClustering && !result.instancedGroups.empty()) {
@@ -846,6 +848,8 @@ namespace QuadtreePipeline {
                     : std::vector<double>{ 0.65, 0.60 };
                 clusterConfig.hausdorffMaxSamplePoints = _config.hausdorffMaxSamplePoints;
                 clusterConfig.enableIcpAlignment = _config.enableIcpAlignment;
+                clusterConfig.enableAabbCoarseFilter = _config.enableAabbCoarseFilter;
+                clusterConfig.aabbAspectRatioTolerance = _config.aabbAspectRatioTolerance;
                 clusterConfig.instanceLimit = hlodInstanceLimit;
                 clusterConfig.materialFilterMode = _config.materialFilterMode;
                 clusterConfig.lod4_sizeTolerance = _config.lod4SizeTolerance;
