@@ -29,7 +29,8 @@ namespace GltfInstancing {
             int instanceLimit,
             size_t hausdorffMaxSamplePoints = 2000,
             bool allowUnknownCrossMeshClustering = false,
-            const std::string& materialFilterMode = "none");
+            const std::string& materialFilterMode = "none",
+            bool enableIcpAlignment = false);
 
         InstancingDetectionResult detect(const std::vector<LoadedGltfModel>& loadedModels);
 
@@ -41,6 +42,7 @@ namespace GltfInstancing {
         size_t _hausdorffMaxSamplePoints;
         bool _allowUnknownCrossMeshClustering;
         std::string _materialFilterMode;
+        bool _enableIcpAlignment;
 
         std::string buildSemanticHashKey(const std::optional<SemanticInfo>& info) const;
         void traverseNode(

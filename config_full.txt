@@ -46,6 +46,9 @@ hlod_similarity_threshold = 0.70
 # Hausdorff 点云采样上限，0 表示不采样；越小越快但可能更不精确。默认 2000
 hausdorff_max_sample_points = 2000
 
+# 是否启用 ICP 点云配准：在 Hausdorff 比较前对齐旋转，处理 mesh 局部旋转差异。默认 false
+# enable_icp_alignment = false
+
 # 语义为 Unknown 的 mesh 是否允许跨 mesh 聚类。默认 false
 allow_unknown_cross_mesh_clustering = false
 

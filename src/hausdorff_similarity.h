@@ -28,14 +28,16 @@ namespace GltfInstancing {
     // similarity = 1 / (1 + distance); distance=0 -> 1, distance=1 -> 0.5, etc.
     double hausdorffDistanceToSimilarity(double hausdorffDistance);
 
-    // Full pipeline: extract, normalize, compute Hausdorff, return similarity.
+    // Full pipeline: extract, normalize, [optional ICP align], compute Hausdorff, return similarity.
     // Returns similarity in [0, 1], or -1.0 if either mesh has no valid positions.
+    // enableIcpAlignment: if true, run ICP to align ptsB to ptsA before Hausdorff (handles mesh local rotation).
     double computeMeshSimilarity(
         const CesiumGltf::Model& modelA,
         const CesiumGltf::Mesh& meshA,
         const CesiumGltf::Model& modelB,
         const CesiumGltf::Mesh& meshB,
-        size_t maxSamplePoints = 0);
+        size_t maxSamplePoints = 0,
+        bool enableIcpAlignment = false);
 
 } // namespace GltfInstancing
 

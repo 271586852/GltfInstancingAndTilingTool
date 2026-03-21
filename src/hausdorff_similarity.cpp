@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 #include <nanoflann.hpp>
 #include <algorithm>
+#include "svd3.h"
 #include <limits>
 #include <cmath>
 #include <cstddef>
@@ -114,6 +115,95 @@ namespace GltfInstancing {
             }
             return maxMinDist;
         }
+
+        // ICP: align ptsB to ptsA (rigid: rotation + translation). Modifies ptsB in-place.
+        // Both point clouds should already be normalized (centered, scaled).
+        void icpAlignPointCloud(
+            const std::vector<glm::dvec3>& ptsA,
+            std::vector<glm::dvec3>& ptsB,
+            int maxIterations = 20,
+            double convergenceThreshold = 1e-6)
+        {
+            if (ptsA.empty() || ptsB.empty()) return;
+
+            PointCloudAdaptor adaptA;
+            adaptA.pts = &ptsA;
+
+            for (int iter = 0; iter < maxIterations; ++iter) {
+                KDTree treeA(3, adaptA, nanoflann::KDTreeSingleIndexAdaptorParams(10));
+                treeA.buildIndex();
+
+                // Find correspondences: for each b_i, nearest in A
+                glm::dvec3 meanA(0), meanB(0);
+                std::vector<glm::dvec3> corrA(ptsB.size());
+                std::vector<size_t> idx(1);
+                std::vector<double> distSq(1);
+
+                for (size_t i = 0; i < ptsB.size(); ++i) {
+                    const double query[3] = { ptsB[i].x, ptsB[i].y, ptsB[i].z };
+                    nanoflann::KNNResultSet<double> resultSet(1);
+                    resultSet.init(&idx[0], &distSq[0]);
+                    treeA.findNeighbors(resultSet, query, nanoflann::SearchParameters());
+                    corrA[i] = ptsA[idx[0]];
+                    meanA += corrA[i];
+                    meanB += ptsB[i];
+                }
+                meanA /= static_cast<double>(ptsB.size());
+                meanB /= static_cast<double>(ptsB.size());
+
+                // H = sum (b_i - meanB) * (a_i - meanA)^T
+                float h11 = 0, h12 = 0, h13 = 0, h21 = 0, h22 = 0, h23 = 0, h31 = 0, h32 = 0, h33 = 0;
+                for (size_t i = 0; i < ptsB.size(); ++i) {
+                    glm::dvec3 db = ptsB[i] - meanB;
+                    glm::dvec3 da = corrA[i] - meanA;
+                    h11 += static_cast<float>(db.x * da.x); h12 += static_cast<float>(db.x * da.y); h13 += static_cast<float>(db.x * da.z);
+                    h21 += static_cast<float>(db.y * da.x); h22 += static_cast<float>(db.y * da.y); h23 += static_cast<float>(db.y * da.z);
+                    h31 += static_cast<float>(db.z * da.x); h32 += static_cast<float>(db.z * da.y); h33 += static_cast<float>(db.z * da.z);
+                }
+
+                float u11, u12, u13, u21, u22, u23, u31, u32, u33;
+                float s11, s12, s13, s21, s22, s23, s31, s32, s33;
+                float v11, v12, v13, v21, v22, v23, v31, v32, v33;
+                svd3_impl::svd(h11, h12, h13, h21, h22, h23, h31, h32, h33,
+                    u11, u12, u13, u21, u22, u23, u31, u32, u33,
+                    s11, s12, s13, s21, s22, s23, s31, s32, s33,
+                    v11, v12, v13, v21, v22, v23, v31, v32, v33);
+
+                // R = V * U^T (rotation from B to A frame)
+                float r11 = v11 * u11 + v12 * u21 + v13 * u31;
+                float r12 = v11 * u12 + v12 * u22 + v13 * u32;
+                float r13 = v11 * u13 + v12 * u23 + v13 * u33;
+                float r21 = v21 * u11 + v22 * u21 + v23 * u31;
+                float r22 = v21 * u12 + v22 * u22 + v23 * u32;
+                float r23 = v21 * u13 + v22 * u23 + v23 * u33;
+                float r31 = v31 * u11 + v32 * u21 + v33 * u31;
+                float r32 = v31 * u12 + v32 * u22 + v33 * u32;
+                float r33 = v31 * u13 + v32 * u23 + v33 * u33;
+
+                // Ensure proper rotation (det=1)
+                float det = r11 * (r22 * r33 - r23 * r32) - r12 * (r21 * r33 - r23 * r31) + r13 * (r21 * r32 - r22 * r31);
+                if (det < 0) {
+                    r31 = -r31; r32 = -r32; r33 = -r33;
+                }
+
+                glm::dvec3 t = meanA - glm::dvec3(
+                    r11 * meanB.x + r12 * meanB.y + r13 * meanB.z,
+                    r21 * meanB.x + r22 * meanB.y + r23 * meanB.z,
+                    r31 * meanB.x + r32 * meanB.y + r33 * meanB.z);
+
+                double maxDelta = 0;
+                for (size_t i = 0; i < ptsB.size(); ++i) {
+                    glm::dvec3 oldP = ptsB[i];
+                    ptsB[i] = glm::dvec3(
+                        r11 * oldP.x + r12 * oldP.y + r13 * oldP.z + t.x,
+                        r21 * oldP.x + r22 * oldP.y + r23 * oldP.z + t.y,
+                        r31 * oldP.x + r32 * oldP.y + r33 * oldP.z + t.z);
+                    double d = glm::length(ptsB[i] - oldP);
+                    if (d > maxDelta) maxDelta = d;
+                }
+                if (maxDelta < convergenceThreshold) break;
+            }
+        }
     }
 
     double computeHausdorffDistance(
@@ -137,7 +227,8 @@ namespace GltfInstancing {
         const CesiumGltf::Mesh& meshA,
         const CesiumGltf::Model& modelB,
         const CesiumGltf::Mesh& meshB,
-        size_t maxSamplePoints)
+        size_t maxSamplePoints,
+        bool enableIcpAlignment)
     {
         std::vector<glm::dvec3> ptsA = extractMeshPositions(modelA, meshA);
         std::vector<glm::dvec3> ptsB = extractMeshPositions(modelB, meshB);
@@ -148,6 +239,10 @@ namespace GltfInstancing {
 
         normalizePointCloud(ptsA);
         normalizePointCloud(ptsB);
+
+        if (enableIcpAlignment) {
+            icpAlignPointCloud(ptsA, ptsB);
+        }
 
         double dist = computeHausdorffDistance(ptsA, ptsB);
         if (dist < 0) return -1.0;

@@ -96,6 +96,7 @@ endif()
 # ----------------------------------------------------------------------------------
 target_include_directories(gltf_instancer PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extern"
     "${CESIUM_NATIVE_V037_DEBUG_INCLUDE_DIR}"
     "${nanoflann_SOURCE_DIR}/include"
 )

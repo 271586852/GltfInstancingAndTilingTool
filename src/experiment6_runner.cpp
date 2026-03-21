@@ -472,7 +472,7 @@ void processSingleGlbFullPipeline(
         }
         double thresh = baseConfig.similarityThresholdsParsed.empty() ? 0.95 : baseConfig.similarityThresholdsParsed[0];
         GltfInstancing::SemanticMaterialGeometricDetector detector(
-            &semanticParser, baseConfig.semanticHashFields, thresh, baseConfig.instanceLimit, baseConfig.hausdorffMaxSamplePoints, baseConfig.allowUnknownCrossMeshClustering, baseConfig.materialFilterMode);
+            &semanticParser, baseConfig.semanticHashFields, thresh, baseConfig.instanceLimit, baseConfig.hausdorffMaxSamplePoints, baseConfig.allowUnknownCrossMeshClustering, baseConfig.materialFilterMode, baseConfig.enableIcpAlignment);
         detectionResult = detector.detect(loadedModels);
     }
 
@@ -511,6 +511,7 @@ void processSingleGlbFullPipeline(
             ? std::vector<double>(baseConfig.instanceLodSimilarityThresholdsParsed.begin() + 1, baseConfig.instanceLodSimilarityThresholdsParsed.begin() + 5)
             : std::vector<double>{ 0.90, 0.85, 0.80, 0.75 };
         lodConfig.hausdorffMaxSamplePoints = baseConfig.hausdorffMaxSamplePoints;
+        lodConfig.enableIcpAlignment = baseConfig.enableIcpAlignment;
         lodConfig.instanceLimit = baseConfig.instanceLodInstanceLimit >= 1 ? baseConfig.instanceLodInstanceLimit : baseConfig.instanceLimit;
         lodConfig.materialFilterMode = baseConfig.instanceLodMaterialFilterMode;
         lodConfig.lod4_sizeTolerance = baseConfig.lod4SizeTolerance;
@@ -661,7 +662,7 @@ void runExperiment6(
                 }
                 double thresh = config.similarityThresholdsParsed.empty() ? 0.95 : config.similarityThresholdsParsed[0];
                 GltfInstancing::SemanticMaterialGeometricDetector detector(
-                    &semanticParser, config.semanticHashFields, thresh, config.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering, config.materialFilterMode);
+                    &semanticParser, config.semanticHashFields, thresh, config.instanceLimit, config.hausdorffMaxSamplePoints, config.allowUnknownCrossMeshClustering, config.materialFilterMode, config.enableIcpAlignment);
                 detectionResult = detector.detect(allLoadedModels);
             }
 
@@ -700,6 +701,7 @@ void runExperiment6(
                     ? std::vector<double>(config.instanceLodSimilarityThresholdsParsed.begin() + 1, config.instanceLodSimilarityThresholdsParsed.begin() + 5)
                     : std::vector<double>{ 0.90, 0.85, 0.80, 0.75 };
                 lodConfig.hausdorffMaxSamplePoints = config.hausdorffMaxSamplePoints;
+                lodConfig.enableIcpAlignment = config.enableIcpAlignment;
                 lodConfig.instanceLimit = config.instanceLodInstanceLimit >= 1 ? config.instanceLodInstanceLimit : config.instanceLimit;
                 lodConfig.materialFilterMode = config.instanceLodMaterialFilterMode;
                 lodConfig.lod4_sizeTolerance = config.lod4SizeTolerance;

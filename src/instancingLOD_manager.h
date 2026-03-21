@@ -54,6 +54,7 @@ namespace GltfInstancing {
         // 每级 LOD 的 Hausdorff 相似度阈值，LOD 越粗糙越宽松。index 0=LOD4, 1=LOD3, 2=LOD2, 3=LOD1
         std::vector<double> similarityThresholdsPerLevel = { 0.90, 0.85, 0.80, 0.75 };
         size_t hausdorffMaxSamplePoints = 2000;
+        bool enableIcpAlignment = false;
         int instanceLimit = 2;
         std::string materialFilterMode = "none"; // "none", "hash", "index"
         double lod4_sizeTolerance = 0.05;  // 仅当 similarityThresholdsPerLevel 为空时用作体积聚类回退

@@ -15,6 +15,7 @@ allow_non_uniform_scale_instancing = false
 semantic_hash_fields = category,family,type
 similarity_thresholds = 0.98,0.95,0.92,0.90,0.88
 hausdorff_max_sample_points = 4000
+enable_icp_alignment = false
 allow_unknown_cross_mesh_clustering = false
 material_filter_mode = hash
 semantic_data_path = D:/Data/semantic
