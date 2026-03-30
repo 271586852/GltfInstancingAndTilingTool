@@ -1,0 +1,61 @@
+# =============================================================================
+# 纯几何模式（Normal / Geometry-only）
+# 目标：不使用语义、不使用材质哈希，仅用 ICP + Hausdorff 做实例化检测
+# 相似度阈值：0.80
+# =============================================================================
+
+# --- 基础 ---
+input_directory = D:/Data/BIM/住宅标准层
+output_directory = D:/Experiments/output/normal
+merge_all_glb = false
+mesh_segmentation = false
+
+# --- Stage 1 实例化检测（纯几何：ICP + Hausdorff）---
+instance_limit = 2
+allow_non_uniform_scale_instancing = true
+# 空字符串：不做语义约束，所有 mesh 归入同一组，仅做几何判定
+semantic_hash_fields =
+similarity_thresholds = 0.80
+hausdorff_max_sample_points = 2000
+# 启用 ICP 对齐，在 Hausdorff 前处理 mesh 局部旋转差异
+enable_icp_alignment = true
+enable_aabb_coarse_filter = true
+aabb_aspect_ratio_tolerance = 0.25
+allow_unknown_cross_mesh_clustering = true
+# none：不使用材质哈希过滤，任意材质可比较
+material_filter_mode = none
+semantic_data_path = D:/Data/semantic
+
+# --- Instance LOD ---
+enable_instance_lod_generation = true
+lod_level_count = 5
+target_screen_sse = 16.0
+instance_lod_similarity_thresholds = 0.80,0.78,0.76,0.74,0.72
+instance_lod_instance_limit = -1
+instance_lod_material_filter_mode = none
+lod4_size_tolerance = 0.05
+lod3_aspect_ratio_tolerance = 0.20
+enable_semantic_check = false
+enable_geometric_check = true
+
+# --- Non-instanced LOD ---
+enable_non_instanced_lod_generation = false
+enable_non_instanced_lod_instancing = false
+enable_non_instanced_lod_clustering = false
+non_instanced_lod_similarity_thresholds = 0.80,0.78,0.76
+
+# --- Quadtree / HLOD ---
+enable_quadtree = true
+quadtree_max_depth = 6
+quadtree_max_objects_per_tile = 50
+enable_hlod_clustering = false
+hlod_similarity_thresholds = 0.75,0.72,0.69,0.66,0.63
+hlod_instance_limit = 2
+hlod_allow_non_uniform_scale_instancing = true
+
+# --- 实验模式 ---
+enable_experiment_mode = true
+use_symbolic_links = false
+run_cross_glb_hlod_experiment = true
+experiment_dataset_name = 多楼层建筑
+experiment_strategy_id = Normal_GeometryOnly
